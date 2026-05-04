@@ -15,3 +15,4 @@ media/
 .env
 .idea/
 *.env.local
+staticfiles/
