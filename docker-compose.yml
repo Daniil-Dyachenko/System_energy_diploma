@@ -1,7 +1,7 @@
 services:
   db:
     image: postgres:16-alpine
-    container_name: energy_db
+    container_name: energy_system_db
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -19,7 +19,7 @@ services:
 
   web:
     build: .
-    container_name: energy_web
+    container_name: energy_system_web
     restart: unless-stopped
     command: >
       sh -c "python manage.py migrate &&
@@ -36,4 +36,4 @@ services:
 
 volumes:
   postgres_data:
-    name: energy_postgres_data
+    name: energy_system_postgres_data
