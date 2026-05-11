@@ -23,6 +23,16 @@ class Device(models.Model):
     )
     is_on = models.BooleanField(default=False)
     description = models.TextField(blank=True)
+    last_power_watts = models.FloatField(
+        default=0.0,
+        validators=[MinValueValidator(0.0)],
+        help_text='Most recent power reading reported by the device.',
+    )
+    last_seen_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text='Timestamp of the last telemetry packet received from the device.',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

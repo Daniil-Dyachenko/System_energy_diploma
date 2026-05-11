@@ -5,15 +5,29 @@ from .models import Device, SystemSettings, Telemetry
 
 @admin.register(Device)
 class DeviceAdmin(admin.ModelAdmin):
-    list_display = ('name', 'device_id', 'priority', 'is_on', 'updated_at')
+    list_display = (
+        'name',
+        'device_id',
+        'priority',
+        'is_on',
+        'last_power_watts',
+        'last_seen_at',
+        'updated_at',
+    )
     list_filter = ('is_on', 'priority')
     list_editable = ('priority', 'is_on')
     search_fields = ('name', 'device_id')
     ordering = ('priority', 'name')
-    readonly_fields = ('created_at', 'updated_at')
+    readonly_fields = (
+        'last_power_watts',
+        'last_seen_at',
+        'created_at',
+        'updated_at',
+    )
     fieldsets = (
         (None, {'fields': ('name', 'device_id', 'description')}),
         ('Control', {'fields': ('priority', 'is_on')}),
+        ('Live state', {'fields': ('last_power_watts', 'last_seen_at')}),
         ('Timestamps', {'fields': ('created_at', 'updated_at')}),
     )
 
