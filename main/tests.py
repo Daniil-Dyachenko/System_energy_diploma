@@ -1,8 +1,11 @@
 """Tests for stage REST API and Logic(serializers, ingest endpoint, and the balancing algorithm.)"""
 from __future__ import annotations
 
+from datetime import timedelta
+
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -198,6 +201,171 @@ class BalancingAlgorithmTests(TestCase):
         self.assertTrue(boiler.is_on, 'algorithm must not touch devices when paused')
         self.assertEqual(report.shed_devices, [])
         self.assertTrue(report.is_overloaded)
+
+
+class CurrentLoadEndpointTests(TestCase):
+    def test_snapshot_returns_devices_and_total(self):
+        Device.objects.create(
+            name='Fridge', device_id='esp32-fridge', priority=1,
+            is_on=True, last_power_watts=300,
+        )
+        Device.objects.create(
+            name='Heater', device_id='esp32-heater', priority=8,
+            is_on=False, last_power_watts=2000,
+        )
+        client = APIClient()
+        resp = client.get(reverse('current-load'))
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        body = resp.json()
+        self.assertEqual(body['total_power_watts'], 300)
+        self.assertFalse(body['is_overloaded'])
+        self.assertEqual(len(body['devices']), 2)
+
+class RestoreModeTests(TestCase):
+    """ MANUAL mode latches shedded devices off."""
+
+    def setUp(self):
+        self.settings_row, _ = SystemSettings.objects.update_or_create(
+            pk=1,
+            defaults={
+                'power_limit_watts': 2000,
+                'is_active': True,
+                'restore_mode': SystemSettings.RestoreMode.MANUAL,
+                'restore_cooldown_seconds': 30,
+            },
+        )
+
+    def test_manual_mode_skips_restore(self):
+        """In MANUAL mode a shed device must stay off even with comfortable headroom."""
+        fridge = Device.objects.create(
+            name='Fridge', device_id='fridge', priority=1,
+            is_on=True, last_power_watts=500,
+        )
+        iron = Device.objects.create(
+            name='Iron', device_id='iron', priority=9,
+            is_on=False, last_power_watts=800,
+            shed_at=timezone.now() - timedelta(hours=1),
+        )
+
+        report = rebalance_load()
+
+        iron.refresh_from_db()
+        fridge.refresh_from_db()
+        self.assertFalse(iron.is_on, 'MANUAL mode must not auto-restore shed devices')
+        self.assertEqual(report.restored_devices, [])
+        self.assertEqual(report.restore_mode, SystemSettings.RestoreMode.MANUAL)
+        self.assertIsNotNone(iron.shed_at)
+
+
+class CooldownTests(TestCase):
+    """AUTO restore is gated by `restore_cooldown_seconds`."""
+
+    def setUp(self):
+        SystemSettings.objects.update_or_create(
+            pk=1,
+            defaults={
+                'power_limit_watts': 3000,
+                'is_active': True,
+                'restore_mode': SystemSettings.RestoreMode.AUTO,
+                'restore_cooldown_seconds': 30,
+            },
+        )
+
+    def test_shed_stamps_shed_at(self):
+        """Algorithmic shed must record the timestamp used by the cooldown gate."""
+        Device.objects.create(
+            name='Fridge', device_id='fridge', priority=1,
+            is_on=True, last_power_watts=1500,
+        )
+        iron = Device.objects.create(
+            name='Iron', device_id='iron', priority=9,
+            is_on=True, last_power_watts=2000,
+        )
+
+        before = timezone.now()
+        rebalance_load()
+        after = timezone.now()
+
+        iron.refresh_from_db()
+        self.assertFalse(iron.is_on)
+        self.assertIsNotNone(iron.shed_at)
+        self.assertTrue(before <= iron.shed_at <= after)
+
+    def test_cooldown_blocks_restore(self):
+        """A device shed within the cooldown window must not auto-restore yet."""
+        Device.objects.create(
+            name='Fridge', device_id='fridge', priority=1,
+            is_on=True, last_power_watts=500,
+        )
+        iron = Device.objects.create(
+            name='Iron', device_id='iron', priority=9,
+            is_on=False, last_power_watts=800,
+            shed_at=timezone.now() - timedelta(seconds=5),
+        )
+
+        report = rebalance_load()
+
+        iron.refresh_from_db()
+        self.assertFalse(iron.is_on, 'cooldown must block immediate restore')
+        self.assertEqual(report.restored_devices, [])
+        self.assertIsNotNone(iron.shed_at, 'cooldown gate must not silently reset shed_at')
+
+    def test_cooldown_expires_allows_restore(self):
+        """Once `restore_cooldown_seconds` has elapsed, AUTO restore re-enables the device."""
+        Device.objects.create(
+            name='Fridge', device_id='fridge', priority=1,
+            is_on=True, last_power_watts=500,
+        )
+        iron = Device.objects.create(
+            name='Iron', device_id='iron', priority=9,
+            is_on=False, last_power_watts=800,
+            shed_at=timezone.now() - timedelta(seconds=120),
+        )
+
+        report = rebalance_load()
+
+        iron.refresh_from_db()
+        self.assertTrue(iron.is_on, 'cooldown expired — device should be restored')
+        self.assertIn('iron', report.restored_devices)
+        self.assertIsNone(iron.shed_at, 'successful auto-restore must clear shed_at')
+
+
+class ManualToggleTests(TestCase):
+    """Manual toggle ON resets `shed_at` (bypasses cooldown)."""
+
+    def test_manual_toggle_resets_shed_at(self):
+        device = Device.objects.create(
+            name='Iron', device_id='iron', priority=9,
+            is_on=False, last_power_watts=800,
+            shed_at=timezone.now() - timedelta(seconds=2),
+        )
+
+        client = APIClient()
+        url = reverse('device-toggle', kwargs={'pk': device.pk})
+        resp = client.post(url)
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.content)
+        device.refresh_from_db()
+        self.assertTrue(device.is_on, 'toggle must flip the relay state')
+        self.assertIsNone(device.shed_at, 'manual ON must clear shed_at to bypass cooldown')
+
+    def test_manual_toggle_off_preserves_shed_at(self):
+        """Flipping a device OFF manually must not stamp shed_at — that field
+        is reserved for algorithmic shedding."""
+        device = Device.objects.create(
+            name='Iron', device_id='iron', priority=9,
+            is_on=True, last_power_watts=800,
+            shed_at=None,
+        )
+
+        client = APIClient()
+        url = reverse('device-toggle', kwargs={'pk': device.pk})
+        resp = client.post(url)
+
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        device.refresh_from_db()
+        self.assertFalse(device.is_on)
+        self.assertIsNone(device.shed_at)
 
 
 class CurrentLoadEndpointTests(TestCase):
