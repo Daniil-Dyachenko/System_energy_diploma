@@ -3,6 +3,7 @@ from django.db import models
 
 
 class Device(models.Model):
+    """Controllable appliance attached to an ESP32 relay."""
 
     PRIORITY_MIN = 1
     PRIORITY_MAX = 10
@@ -33,6 +34,15 @@ class Device(models.Model):
         blank=True,
         help_text='Timestamp of the last telemetry packet received from the device.',
     )
+    shed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=(
+            'When the balancing algorithm last shed this device. Cleared on '
+            'successful auto-restore or on manual ON via the toggle endpoint. '
+            'Used to enforce the AUTO-mode restore cooldown.'
+        ),
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -47,6 +57,7 @@ class Device(models.Model):
 
 
 class Telemetry(models.Model):
+    """Power-consumption sample reported by an ESP32."""
 
     device = models.ForeignKey(
         Device,
@@ -72,6 +83,11 @@ class Telemetry(models.Model):
 
 
 class SystemSettings(models.Model):
+    """Global runtime configuration for the load-balancing algorithm."""
+
+    class RestoreMode(models.TextChoices):
+        AUTO = 'AUTO', 'Auto-restore with cooldown'
+        MANUAL = 'MANUAL', 'Manual restore only (latching)'
 
     power_limit_watts = models.PositiveIntegerField(
         default=3000,
@@ -80,6 +96,23 @@ class SystemSettings(models.Model):
     is_active = models.BooleanField(
         default=True,
         help_text='If False, the balancing algorithm is paused.',
+    )
+    restore_mode = models.CharField(
+        max_length=8,
+        choices=RestoreMode.choices,
+        default=RestoreMode.AUTO,
+        help_text=(
+            'AUTO: algorithm re-enables shed devices once load drops (with a '
+            'cooldown). MANUAL: shed devices stay off until an user '
+            'toggles them back on through the UI.'
+        ),
+    )
+    restore_cooldown_seconds = models.PositiveIntegerField(
+        default=30,
+        help_text=(
+            'In AUTO mode, the minimum number of seconds between when a device '
+            'was shed and when it may be restored automatically.'
+        ),
     )
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -92,5 +125,6 @@ class SystemSettings(models.Model):
 
     @classmethod
     def load(cls) -> 'SystemSettings':
+        """Return the singleton row, creating it on first access."""
         obj, _ = cls.objects.get_or_create(pk=1)
         return obj

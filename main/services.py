@@ -1,9 +1,9 @@
-"""Load balancing across the ESP32-controlled devices.
-"""
+"""Load balancing across the ESP32-controlled devices."""
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from typing import Iterable
 
 from django.db import transaction
@@ -22,6 +22,7 @@ class BalancingReport:
     total_power_watts: float = 0.0
     power_limit_watts: int = 0
     is_overloaded: bool = False
+    restore_mode: str = SystemSettings.RestoreMode.AUTO
     shed_devices: list[str] = field(default_factory=list)
     restored_devices: list[str] = field(default_factory=list)
 
@@ -31,23 +32,25 @@ def _current_total_load(devices: Iterable[Device]) -> float:
     return float(sum(d.last_power_watts for d in devices if d.is_on))
 
 
-def _shed_one(devices: list[Device]) -> Device | None:
-    """Turn off the on-device with the lowest priority (highest priority number).
-
-    Returns the device that was switched off, or None if nothing could be shed.
-    """
+def _shed_one(devices: list[Device], now: datetime) -> Device | None:
+    """Turn off the on-device with the lowest priority (highest priority number)."""
     candidates = [d for d in devices if d.is_on]
     if not candidates:
         return None
     victim = max(candidates, key=lambda d: (d.priority, d.last_power_watts))
     victim.is_on = False
-    victim.save(update_fields=['is_on', 'updated_at'])
+    victim.shed_at = now
+    victim.save(update_fields=['is_on', 'shed_at', 'updated_at'])
     return victim
 
 
-def _restore_one(devices: list[Device], headroom_watts: float) -> Device | None:
-    """Turn back on the highest-priority off-device that fits within headroom.
-    """
+def _restore_one(
+    devices: list[Device],
+    headroom_watts: float,
+    now: datetime,
+    cooldown: timedelta,
+) -> Device | None:
+    """Turn back on the highest-priority off-device that fits within headroom."""
     if headroom_watts <= 0:
         return None
 
@@ -57,17 +60,25 @@ def _restore_one(devices: list[Device], headroom_watts: float) -> Device | None:
 
     off_devices.sort(key=lambda d: (d.priority, -d.last_power_watts))
     for device in off_devices:
-        if device.last_power_watts <= headroom_watts:
-            device.is_on = True
-            device.save(update_fields=['is_on', 'updated_at'])
-            return device
+        if device.last_power_watts > headroom_watts:
+            continue
+        if device.shed_at is not None and (now - device.shed_at) < cooldown:
+            logger.info(
+                'Restore skipped for %s: cooldown active (%.1fs remaining)',
+                device.device_id,
+                (cooldown - (now - device.shed_at)).total_seconds(),
+            )
+            continue
+        device.is_on = True
+        device.shed_at = None
+        device.save(update_fields=['is_on', 'shed_at', 'updated_at'])
+        return device
     return None
 
 
 @transaction.atomic
 def record_telemetry(device: Device, power_watts: float) -> Telemetry:
-    """Persist a telemetry sample and refresh the device's live-state fields.
-    """
+    """Persist a telemetry sample and refresh the device's live-state fields."""
     locked = Device.objects.select_for_update().get(pk=device.pk)
     locked.last_power_watts = float(power_watts)
     locked.last_seen_at = timezone.now()
@@ -79,11 +90,11 @@ def record_telemetry(device: Device, power_watts: float) -> Telemetry:
 
 @transaction.atomic
 def rebalance_load() -> BalancingReport:
-    """Run the shed/restore loop and return what changed.
-    """
+    """Run the shed/restore loop and return what changed."""
     settings_row = SystemSettings.load()
     report = BalancingReport(
         power_limit_watts=settings_row.power_limit_watts,
+        restore_mode=settings_row.restore_mode,
     )
 
     if not settings_row.is_active:
@@ -93,11 +104,14 @@ def rebalance_load() -> BalancingReport:
         report.is_overloaded = report.total_power_watts > settings_row.power_limit_watts
         return report
 
+    now = timezone.now()
+    cooldown = timedelta(seconds=settings_row.restore_cooldown_seconds)
+
     devices = list(Device.objects.select_for_update().all())
     total = _current_total_load(devices)
 
     while total > settings_row.power_limit_watts:
-        victim = _shed_one(devices)
+        victim = _shed_one(devices, now)
         if victim is None:
             break
         report.shed_devices.append(victim.device_id)
@@ -107,17 +121,20 @@ def rebalance_load() -> BalancingReport:
             victim.device_id, victim.priority, victim.last_power_watts, total,
         )
 
-    while True:
-        headroom = settings_row.power_limit_watts - total
-        restored = _restore_one(devices, headroom)
-        if restored is None:
-            break
-        report.restored_devices.append(restored.device_id)
-        total += restored.last_power_watts
-        logger.info(
-            'Restored device %s (priority=%d, draw=%.1fW); new total=%.1fW',
-            restored.device_id, restored.priority, restored.last_power_watts, total,
-        )
+    if settings_row.restore_mode == SystemSettings.RestoreMode.AUTO:
+        while True:
+            headroom = settings_row.power_limit_watts - total
+            restored = _restore_one(devices, headroom, now, cooldown)
+            if restored is None:
+                break
+            report.restored_devices.append(restored.device_id)
+            total += restored.last_power_watts
+            logger.info(
+                'Restored device %s (priority=%d, draw=%.1fW); new total=%.1fW',
+                restored.device_id, restored.priority, restored.last_power_watts, total,
+            )
+    else:
+        logger.info('Restore phase skipped: restore_mode=MANUAL')
 
     report.total_power_watts = total
     report.is_overloaded = total > settings_row.power_limit_watts

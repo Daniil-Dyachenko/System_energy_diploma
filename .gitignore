@@ -16,3 +16,8 @@ media/
 .idea/
 *.env.local
 staticfiles/
+firmware_esp32/src/secrets.h
+.vscode/c_cpp_properties.json
+.vscode/launch.json
+.vscode/ipch/
+.vscode/.browse.c_cpp.db*

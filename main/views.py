@@ -25,9 +25,11 @@ from .serializers import (
 )
 from .services import ingest_and_rebalance
 
+
+# ESP32-facing endpoints (X-API-Key required)
+
 class TelemetryIngestView(APIView):
-    """POST /api/telemetry/ — ESP32 reports a power-draw sample.
-    """
+    """POST /api/telemetry/ — ESP32 reports a power-draw sample."""
 
     permission_classes = [HasDeviceApiKey]
 
@@ -46,6 +48,7 @@ class TelemetryIngestView(APIView):
                     'total_power_watts': report.total_power_watts,
                     'power_limit_watts': report.power_limit_watts,
                     'is_overloaded': report.is_overloaded,
+                    'restore_mode': report.restore_mode,
                     'shed_devices': report.shed_devices,
                     'restored_devices': report.restored_devices,
                 },
@@ -55,8 +58,7 @@ class TelemetryIngestView(APIView):
 
 
 class DeviceStateView(APIView):
-    """GET /api/device-state/ — ESP32 polls relay states.
-    """
+    """GET /api/device-state/ — ESP32 polls relay states."""
 
     permission_classes = [HasDeviceApiKey]
 
@@ -75,9 +77,11 @@ class DeviceStateView(APIView):
         devices = Device.objects.all()
         return Response(DeviceStateSerializer(devices, many=True).data)
 
+
+# Web-client endpoints (currently open for development; auth comes in stage 5)
+
 class ChartDataView(APIView):
-    """GET /api/chart-data/ — total system load aggregated by minute.
-    """
+    """GET /api/chart-data/ — total system load aggregated by minute. """
 
     permission_classes = [AllowAny]
     DEFAULT_WINDOW_MINUTES = 30
@@ -108,7 +112,7 @@ class ChartDataView(APIView):
 class SystemSettingsView(APIView):
     """GET/POST /api/settings/ — read or update the singleton system settings."""
 
-    permission_classes = [AllowAny]  # Не забути в майбутньому підкоректувати
+    permission_classes = [AllowAny]  # tightened in stage 5
 
     def get(self, request):
         return Response(SystemSettingsSerializer(SystemSettings.load()).data)
@@ -144,11 +148,16 @@ class DeviceViewSet(viewsets.ModelViewSet):
 
     queryset = Device.objects.all()
     serializer_class = DeviceSerializer
-    permission_classes = [AllowAny]  # Так само, не забути підкоректувати
+    permission_classes = [AllowAny]  # tightened in stage 5
 
     @action(detail=True, methods=['post'], url_path='toggle')
     def toggle(self, request, pk=None):
+        """Manual relay toggle from the web UI (bypasses the balancing alg)."""
         device = self.get_object()
         device.is_on = not device.is_on
-        device.save(update_fields=['is_on', 'updated_at'])
+        update_fields = ['is_on', 'updated_at']
+        if device.is_on:
+            device.shed_at = None
+            update_fields.append('shed_at')
+        device.save(update_fields=update_fields)
         return Response(DeviceSerializer(device).data)

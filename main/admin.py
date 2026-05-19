@@ -12,6 +12,7 @@ class DeviceAdmin(admin.ModelAdmin):
         'is_on',
         'last_power_watts',
         'last_seen_at',
+        'shed_at',
         'updated_at',
     )
     list_filter = ('is_on', 'priority')
@@ -21,13 +22,14 @@ class DeviceAdmin(admin.ModelAdmin):
     readonly_fields = (
         'last_power_watts',
         'last_seen_at',
+        'shed_at',
         'created_at',
         'updated_at',
     )
     fieldsets = (
         (None, {'fields': ('name', 'device_id', 'description')}),
         ('Control', {'fields': ('priority', 'is_on')}),
-        ('Live state', {'fields': ('last_power_watts', 'last_seen_at')}),
+        ('Live state', {'fields': ('last_power_watts', 'last_seen_at', 'shed_at')}),
         ('Timestamps', {'fields': ('created_at', 'updated_at')}),
     )
 
@@ -44,7 +46,13 @@ class TelemetryAdmin(admin.ModelAdmin):
 
 @admin.register(SystemSettings)
 class SystemSettingsAdmin(admin.ModelAdmin):
-    list_display = ('power_limit_watts', 'is_active', 'updated_at')
+    list_display = (
+        'power_limit_watts',
+        'is_active',
+        'restore_mode',
+        'restore_cooldown_seconds',
+        'updated_at',
+    )
     readonly_fields = ('updated_at',)
 
     def has_add_permission(self, request):

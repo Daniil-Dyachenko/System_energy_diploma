@@ -20,6 +20,7 @@ class DeviceSerializer(serializers.ModelSerializer):
             'is_on',
             'last_power_watts',
             'last_seen_at',
+            'shed_at',
             'created_at',
             'updated_at',
         )
@@ -27,12 +28,14 @@ class DeviceSerializer(serializers.ModelSerializer):
             'id',
             'last_power_watts',
             'last_seen_at',
+            'shed_at',
             'created_at',
             'updated_at',
         )
 
 
 class DeviceStateSerializer(serializers.ModelSerializer):
+    """Compact downlink payload for ESP32: which relay should be on/off."""
 
     class Meta:
         model = Device
@@ -40,6 +43,7 @@ class DeviceStateSerializer(serializers.ModelSerializer):
 
 
 class TelemetryIngestSerializer(serializers.Serializer):
+    """Uplink payload from the ESP32. Looks up the Device by its public device_id."""
 
     device_id = serializers.CharField(max_length=64)
     power_watts = serializers.FloatField(min_value=0.0)
@@ -62,6 +66,7 @@ class TelemetryIngestSerializer(serializers.Serializer):
 
 
 class TelemetryReadSerializer(serializers.ModelSerializer):
+    """Read-only representation used by chart / history endpoints."""
 
     device_name = serializers.CharField(source='device.name', read_only=True)
     device_public_id = serializers.CharField(source='device.device_id', read_only=True)
@@ -80,20 +85,29 @@ class TelemetryReadSerializer(serializers.ModelSerializer):
 
 
 class SystemSettingsSerializer(serializers.ModelSerializer):
+    """Singleton system configuration."""
 
     class Meta:
         model = SystemSettings
-        fields = ('power_limit_watts', 'is_active', 'updated_at')
+        fields = (
+            'power_limit_watts',
+            'is_active',
+            'restore_mode',
+            'restore_cooldown_seconds',
+            'updated_at',
+        )
         read_only_fields = ('updated_at',)
 
 
 class ChartDataPointSerializer(serializers.Serializer):
+    """Aggregated bucket emitted by ChartDataView for Chart.js consumption."""
 
     timestamp = serializers.DateTimeField()
     total_power_watts = serializers.FloatField()
 
 
 class CurrentLoadSerializer(serializers.Serializer):
+    """Snapshot of the system: total load + per-device contribution."""
 
     total_power_watts = serializers.FloatField()
     power_limit_watts = serializers.IntegerField()

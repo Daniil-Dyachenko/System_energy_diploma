@@ -27,6 +27,12 @@ DEBUG = env_bool('DJANGO_DEBUG', True)
 
 ALLOWED_HOSTS = env_list('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1')
 
+CSRF_TRUSTED_ORIGINS = [
+    f'https://*{host}' if host.startswith('.') else f'https://{host}'
+    for host in ALLOWED_HOSTS
+    if host not in ('localhost', '127.0.0.1', '0.0.0.0')
+]
+
 
 INSTALLED_APPS = [
     'django.contrib.admin',

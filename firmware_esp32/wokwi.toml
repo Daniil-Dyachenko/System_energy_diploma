@@ -1,0 +1,6 @@
+# Wokwi VSCode plugin configuration.
+# Built by PlatformIO via `pio run`; the binaries land under .pio/build/.
+[wokwi]
+version = 1
+firmware = '.pio/build/esp32dev/firmware.bin'
+elf      = '.pio/build/esp32dev/firmware.elf'
