@@ -1,0 +1,29 @@
+{% load static %}<!doctype html>
+<html lang="uk" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>404 · Energy Monitor</title>
+  <link rel="stylesheet" href="{% static 'css/main.css' %}">
+  <script>
+    (function () {
+      var stored = localStorage.getItem('theme');
+      var theme = stored || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
+</head>
+<body>
+  <div class="login-shell">
+    <div class="login-card" style="text-align:center;">
+      <div class="login-brand">
+        <span class="brand-logo" aria-hidden="true">⚡</span>
+        <span>Energy Monitor</span>
+      </div>
+      <h2 style="font-size:48px; margin: var(--space-3) 0;">404</h2>
+      <p class="login-subtitle">Сторінку не знайдено. Можливо, її було переміщено або видалено.</p>
+      <a href="/" class="btn btn-primary btn-block">На дашборд</a>
+    </div>
+  </div>
+</body>
+</html>

@@ -107,9 +107,12 @@ class ChartDataPointSerializer(serializers.Serializer):
 
 
 class CurrentLoadSerializer(serializers.Serializer):
-    """Snapshot of the system: total load + per-device contribution."""
+    """Snapshot of the system: total load + system flags + per-device contribution."""
 
     total_power_watts = serializers.FloatField()
     power_limit_watts = serializers.IntegerField()
     is_overloaded = serializers.BooleanField()
-    devices = DeviceStateSerializer(many=True)
+    is_active = serializers.BooleanField()
+    restore_mode = serializers.CharField()
+    restore_cooldown_seconds = serializers.IntegerField()
+    devices = DeviceSerializer(many=True, read_only=True)

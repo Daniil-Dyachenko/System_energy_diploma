@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Дашборд · Energy Monitor{% endblock %}
+{% block page_title %}Дашборд{% endblock %}
+
+{% block content %}
+<div class="dashboard-grid">
+  <section class="card" aria-label="Загальне споживання">
+    <div class="card-header">
+      <span class="card-title">Поточне навантаження</span>
+      <span class="mode-badge" id="mode-badge" data-mode="AUTO" title="Режим відновлення">AUTO</span>
+    </div>
+
+    <div class="stat" id="load-stat">
+      <div class="stat-value">
+        <span id="load-current">—</span><span class="unit">Вт</span>
+      </div>
+      <div class="stat-sub">
+        з ліміту <span id="load-limit" class="mono">— Вт</span>
+        · cooldown <span id="cooldown-display" class="mono">— с</span>
+      </div>
+    </div>
+
+    <div class="progress mt-4" role="progressbar" aria-label="Споживання відносно ліміту">
+      <div class="progress-fill" id="load-progress"></div>
+    </div>
+  </section>
+
+  <section class="card chart-card" aria-label="Графік споживання">
+    <div class="card-header">
+      <span class="card-title">Історія</span>
+      <div class="chart-toolbar" id="chart-toolbar" role="tablist" aria-label="Період">
+        <button type="button" class="chart-range" data-minutes="5" role="tab">5 хв</button>
+        <button type="button" class="chart-range is-active" data-minutes="30" role="tab" aria-selected="true">30 хв</button>
+        <button type="button" class="chart-range" data-minutes="60" role="tab">1 год</button>
+        <button type="button" class="chart-range" data-minutes="360" role="tab">6 год</button>
+      </div>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="power-chart" aria-label="Лінійний графік сумарного споживання за обраний період"></canvas>
+      <div class="empty-text hidden" id="chart-empty">Поки що немає телеметрії за обраний період.</div>
+    </div>
+  </section>
+</div>
+
+<section class="mt-5">
+  <div class="section-title">
+    <h2>Прилади</h2>
+    <a href="{% url 'devices-page' %}" class="btn btn-ghost btn-sm">Керувати →</a>
+  </div>
+  <div class="device-grid" id="device-grid">
+    <div class="empty-text">завантаження…</div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
+<script src="{% static 'js/dashboard.js' %}" defer></script>
+{% endblock %}

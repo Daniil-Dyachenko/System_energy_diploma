@@ -1,9 +1,10 @@
 """DRF views exposing the REST API for ESP32 devices and the web client."""
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import timedelta
 
-from django.db.models import Sum
+from django.db.models import Avg
 from django.db.models.functions import TruncMinute
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -81,7 +82,7 @@ class DeviceStateView(APIView):
 # Web-client endpoints (currently open for development; auth comes in stage 5)
 
 class ChartDataView(APIView):
-    """GET /api/chart-data/ — total system load aggregated by minute. """
+    """GET /api/chart-data/ — total system load aggregated by minute."""
 
     permission_classes = [AllowAny]
     DEFAULT_WINDOW_MINUTES = 30
@@ -95,18 +96,25 @@ class ChartDataView(APIView):
         window = max(1, min(window, self.MAX_WINDOW_MINUTES))
 
         since = timezone.now() - timedelta(minutes=window)
-        rows = (
+
+        per_device = (
             Telemetry.objects.filter(timestamp__gte=since)
             .annotate(bucket=TruncMinute('timestamp'))
-            .values('bucket')
-            .annotate(total_power_watts=Sum('power_watts'))
+            .values('bucket', 'device_id')
+            .annotate(avg_power=Avg('power_watts'))
             .order_by('bucket')
         )
+
+        buckets: dict = defaultdict(float)
+        for row in per_device:
+            buckets[row['bucket']] += float(row['avg_power'] or 0.0)
+
         data = [
-            {'timestamp': row['bucket'], 'total_power_watts': row['total_power_watts'] or 0.0}
-            for row in rows
+            {'timestamp': bucket, 'total_power_watts': total}
+            for bucket, total in sorted(buckets.items())
         ]
         return Response(ChartDataPointSerializer(data, many=True).data)
+
 
 
 class SystemSettingsView(APIView):
@@ -133,11 +141,14 @@ class CurrentLoadView(APIView):
     def get(self, request):
         devices = list(Device.objects.all())
         total = sum(d.last_power_watts for d in devices if d.is_on)
-        limit = SystemSettings.load().power_limit_watts
+        settings_row = SystemSettings.load()
         payload = {
             'total_power_watts': total,
-            'power_limit_watts': limit,
-            'is_overloaded': total > limit,
+            'power_limit_watts': settings_row.power_limit_watts,
+            'is_overloaded': total > settings_row.power_limit_watts,
+            'is_active': settings_row.is_active,
+            'restore_mode': settings_row.restore_mode,
+            'restore_cooldown_seconds': settings_row.restore_cooldown_seconds,
             'devices': devices,
         }
         return Response(CurrentLoadSerializer(payload).data)

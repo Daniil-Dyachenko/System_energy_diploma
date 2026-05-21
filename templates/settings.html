@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Налаштування · Energy Monitor{% endblock %}
+{% block page_title %}Налаштування{% endblock %}
+
+{% block content %}
+<div class="settings-grid">
+  <section class="card" aria-label="Параметри системи">
+    <div class="card-header">
+      <span class="card-title">Конфігурація балансування</span>
+    </div>
+
+    <form id="settings-form" class="form" novalidate>
+      <div class="field">
+        <label for="set-limit" class="field-label">Глобальний ліміт потужності</label>
+        <div class="input-suffix">
+          <input id="set-limit" type="number" min="0" step="100" class="input" required>
+          <span class="suffix">Вт</span>
+        </div>
+        <div class="field-hint">Поріг, з яким сервер порівнює сумарне споживання після кожного пакета телеметрії.</div>
+      </div>
+
+      <div class="field">
+        <span class="field-label">Алгоритм балансування</span>
+        <label class="toggle">
+          <input id="set-active" type="checkbox">
+          <span class="slider"></span>
+          <span>Активний (вимикає прилади при перевантаженні)</span>
+        </label>
+        <div class="field-hint">Якщо вимкнено — телеметрія зберігається, але реле не керуються автоматично.</div>
+      </div>
+
+      <div class="field">
+        <span class="field-label">Режим відновлення</span>
+        <div class="segmented" role="radiogroup" aria-label="Режим">
+          <label>
+            <input type="radio" name="restore_mode" value="AUTO">
+            <span>AUTO · з cooldown</span>
+          </label>
+          <label>
+            <input type="radio" name="restore_mode" value="MANUAL">
+            <span>MANUAL · фіксує OFF</span>
+          </label>
+        </div>
+        <div class="field-hint" id="mode-explain">
+          <strong>AUTO</strong> — після того як прилад відключено алгоритмом, він автоматично повернеться у мережу,
+          щойно сумарне споживання впаде нижче ліміту. Cooldown гарантує, що це не стається миттєво.
+        </div>
+      </div>
+
+      <div class="field" id="cooldown-field">
+        <label for="set-cooldown" class="field-label">Cooldown відновлення</label>
+        <div class="input-suffix">
+          <input id="set-cooldown" type="number" min="0" max="3600" step="5" class="input">
+          <span class="suffix">с</span>
+        </div>
+        <div class="field-hint">У AUTO-режимі — мінімальний час між моментом, коли прилад було вимкнено алгоритмом, і моментом, коли його дозволено повернути.</div>
+      </div>
+
+      <div class="flex gap-3 mt-2" style="justify-content: flex-end;">
+        <button type="button" class="btn btn-secondary" id="btn-reset">Скинути</button>
+        <button type="submit" class="btn btn-primary" id="btn-save">Зберегти</button>
+      </div>
+    </form>
+  </section>
+
+  <aside class="settings-summary" aria-label="Поточні значення">
+    <div>
+      <dt>Останнє оновлення</dt>
+      <dd id="sum-updated">—</dd>
+    </div>
+    <div>
+      <dt>Поточний ліміт</dt>
+      <dd id="sum-limit">—</dd>
+    </div>
+    <div>
+      <dt>Режим</dt>
+      <dd id="sum-mode">—</dd>
+    </div>
+    <div>
+      <dt>Cooldown</dt>
+      <dd id="sum-cooldown">—</dd>
+    </div>
+    <div>
+      <dt>Алгоритм</dt>
+      <dd id="sum-active">—</dd>
+    </div>
+  </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/settings.js' %}" defer></script>
+{% endblock %}

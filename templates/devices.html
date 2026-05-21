@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Прилади · Energy Monitor{% endblock %}
+{% block page_title %}Прилади{% endblock %}
+
+{% block content %}
+<div class="section-title">
+  <p class="text-muted">Керування підключеними мікроконтролерами та реле.</p>
+  <button type="button" class="btn btn-primary" id="btn-add-device">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    <span>Додати прилад</span>
+  </button>
+</div>
+
+<div class="devices-table-wrap card" style="padding: 0; overflow: hidden;">
+  <table class="devices-table">
+    <thead>
+      <tr>
+        <th>Назва</th>
+        <th>Device ID</th>
+        <th>Пріор.</th>
+        <th>Потужність</th>
+        <th>Останній сигнал</th>
+        <th>Стан</th>
+        <th aria-label="Дії"></th>
+      </tr>
+    </thead>
+    <tbody id="devices-tbody">
+      <tr><td colspan="7" class="empty-text">завантаження…</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="devices-cards" id="devices-cards"></div>
+
+<template id="tpl-priority-options">
+  {% for n in priority_choices %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
+</template>
+
+<div class="modal-backdrop" id="add-modal" role="dialog" aria-modal="true" aria-labelledby="add-modal-title" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="add-modal-title">Додати прилад</span>
+      <button type="button" class="btn btn-ghost btn-sm" data-modal-close aria-label="Закрити">✕</button>
+    </div>
+    <form id="add-form" class="modal-body form" novalidate>
+      <div class="field">
+        <label for="add-name" class="field-label">Назва</label>
+        <input id="add-name" name="name" class="input" required maxlength="100" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="add-device-id" class="field-label">Device ID</label>
+        <input id="add-device-id" name="device_id" class="input" required maxlength="64" autocomplete="off" pattern="[A-Za-z0-9._-]+">
+        <div class="field-hint">Унікальний ідентифікатор, який ESP32 шле у тілі телеметрії.</div>
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label for="add-priority" class="field-label">Пріоритет</label>
+          <select id="add-priority" name="priority" class="select"></select>
+          <div class="field-hint">1 — найвищий (відключається останнім).</div>
+        </div>
+        <div class="field">
+          <label class="field-label" for="add-is-on">Реле</label>
+          <label class="toggle">
+            <input type="checkbox" id="add-is-on" name="is_on">
+            <span class="slider"></span>
+            <span>Увімкнено одразу</span>
+          </label>
+        </div>
+      </div>
+      <div class="field">
+        <label for="add-description" class="field-label">Опис</label>
+        <textarea id="add-description" name="description" class="textarea" rows="2" placeholder="Опціонально"></textarea>
+      </div>
+    </form>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" data-modal-close>Скасувати</button>
+      <button type="submit" form="add-form" class="btn btn-primary">Створити</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="delete-modal" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="delete-modal-title">Видалити прилад?</span>
+      <button type="button" class="btn btn-ghost btn-sm" data-modal-close aria-label="Закрити">✕</button>
+    </div>
+    <div class="modal-body">
+      <p>Прилад <strong id="delete-name"></strong> буде видалено разом з усією історією телеметрії. Цю дію не можна скасувати.</p>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" data-modal-close>Скасувати</button>
+      <button type="button" class="btn btn-danger" id="confirm-delete">Видалити</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/devices.js' %}" defer></script>
+{% endblock %}

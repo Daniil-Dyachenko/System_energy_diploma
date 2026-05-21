@@ -1,0 +1,120 @@
+{% load static %}<!doctype html>
+<html lang="uk" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark light">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>{% block title %}Energy Monitor{% endblock %}</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='14'%3E%E2%9A%A1%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="{% static 'css/main.css' %}">
+  <script>
+    (function() {
+      var stored = localStorage.getItem('theme');
+      var theme = stored || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" aria-label="Головна навігація">
+      <a href="{% url 'dashboard' %}" class="brand">
+        <span class="brand-logo" aria-hidden="true">⚡</span>
+        <span class="brand-name">Energy Monitor</span>
+      </a>
+
+      <nav class="primary-nav">
+        {% url 'dashboard' as dashboard_url %}
+        {% url 'devices-page' as devices_url %}
+        {% url 'settings-page' as settings_url %}
+        <a href="{{ dashboard_url }}" class="nav-item{% if request.path == dashboard_url %} is-active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+          <span>Дашборд</span>
+        </a>
+        <a href="{{ devices_url }}" class="nav-item{% if request.path == devices_url %} is-active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2v6"/><path d="M15 2v6"/><path d="M5 8h14v4a7 7 0 0 1-14 0z"/><path d="M12 19v3"/></svg>
+          <span>Прилади</span>
+        </a>
+        <a href="{{ settings_url }}" class="nav-item{% if request.path == settings_url %} is-active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>Налаштування</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button type="button" class="theme-toggle" data-theme-toggle aria-label="Перемкнути тему">
+          <svg class="icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg class="icon-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+          <span class="theme-toggle-label">Тема</span>
+        </button>
+
+        {% if user.is_authenticated %}
+          <div class="user-block">
+            <div class="user-info">
+              <span class="user-avatar" aria-hidden="true">{{ user.username|first|upper }}</span>
+              <span class="user-name">{{ user.username }}</span>
+            </div>
+            <form method="post" action="{% url 'logout' %}" class="logout-form">
+              {% csrf_token %}
+              <button type="submit" class="logout-btn" aria-label="Вийти">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              </button>
+            </form>
+          </div>
+        {% endif %}
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <h1 class="page-title">{% block page_title %}{% endblock %}</h1>
+        <div class="topbar-actions">
+          <span class="status-pill" id="global-status" data-status="loading" aria-live="polite">
+            <span class="status-dot"></span>
+            <span class="status-text">завантаження…</span>
+          </span>
+          <button type="button" class="theme-toggle theme-toggle-compact" data-theme-toggle aria-label="Перемкнути тему">
+            <svg class="icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            <svg class="icon-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+          </button>
+          {% if user.is_authenticated %}
+            <form method="post" action="{% url 'logout' %}" class="logout-form logout-form-compact">
+              {% csrf_token %}
+              <button type="submit" class="logout-btn" aria-label="Вийти">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              </button>
+            </form>
+          {% endif %}
+        </div>
+      </header>
+
+      <div class="content">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+
+    <nav class="bottom-tabs" aria-label="Основна навігація">
+      <a href="{{ dashboard_url }}" class="tab{% if request.path == dashboard_url %} is-active{% endif %}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+        <span>Дашборд</span>
+      </a>
+      <a href="{{ devices_url }}" class="tab{% if request.path == devices_url %} is-active{% endif %}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2v6"/><path d="M15 2v6"/><path d="M5 8h14v4a7 7 0 0 1-14 0z"/><path d="M12 19v3"/></svg>
+        <span>Прилади</span>
+      </a>
+      <a href="{{ settings_url }}" class="tab{% if request.path == settings_url %} is-active{% endif %}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span>Налаштув.</span>
+      </a>
+    </nav>
+  </div>
+
+  <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="false"></div>
+
+  <script src="{% static 'js/theme.js' %}"></script>
+  <script src="{% static 'js/api.js' %}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
