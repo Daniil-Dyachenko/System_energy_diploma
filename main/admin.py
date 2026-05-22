@@ -36,8 +36,8 @@ class DeviceAdmin(admin.ModelAdmin):
 
 @admin.register(Telemetry)
 class TelemetryAdmin(admin.ModelAdmin):
-    list_display = ('device', 'power_watts', 'timestamp')
-    list_filter = ('device',)
+    list_display = ('device', 'power_watts', 'is_on', 'timestamp')
+    list_filter = ('is_on', 'device')
     search_fields = ('device__name', 'device__device_id')
     date_hierarchy = 'timestamp'
     readonly_fields = ('timestamp',)

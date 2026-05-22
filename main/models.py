@@ -68,6 +68,12 @@ class Telemetry(models.Model):
         validators=[MinValueValidator(0.0)],
         help_text='Instantaneous power draw in watts.',
     )
+    is_on = models.BooleanField(
+        default=True,
+        help_text=(
+            'Snapshot of `Device.is_on` at the moment this sample was ingested. '
+        ),
+    )
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:

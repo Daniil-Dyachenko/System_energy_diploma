@@ -84,7 +84,11 @@ def record_telemetry(device: Device, power_watts: float) -> Telemetry:
     locked.last_seen_at = timezone.now()
     locked.save(update_fields=['last_power_watts', 'last_seen_at', 'updated_at'])
 
-    sample = Telemetry.objects.create(device=locked, power_watts=power_watts)
+    sample = Telemetry.objects.create(
+        device=locked,
+        power_watts=power_watts,
+        is_on=locked.is_on,
+    )
     return sample
 
 

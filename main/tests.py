@@ -385,3 +385,53 @@ class CurrentLoadEndpointTests(TestCase):
         self.assertEqual(body['total_power_watts'], 300)
         self.assertFalse(body['is_overloaded'])
         self.assertEqual(len(body['devices']), 2)
+
+
+class ChartDataEndpointTests(TestCase):
+    """
+    Verifies the two-step aggregation (AVG per device per minute, SUM across
+    devices) and the is_on filter that excludes samples taken while a device
+    was shed by the algorithm.
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.url = reverse('chart-data')
+
+    def test_avg_then_sum_per_bucket(self):
+        """Each bucket should be the sum of *per-device averages*, not the sum
+        of every raw sample."""
+        fridge = Device.objects.create(
+            name='Fridge', device_id='f', priority=1, is_on=True,
+        )
+        boiler = Device.objects.create(
+            name='Boiler', device_id='b', priority=3, is_on=True,
+        )
+        for _ in range(5):
+            Telemetry.objects.create(device=fridge, power_watts=500, is_on=True)
+            Telemetry.objects.create(device=boiler, power_watts=1500, is_on=True)
+
+        resp = self.client.get(self.url, {'minutes': 5})
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        buckets = resp.json()
+        self.assertGreater(len(buckets), 0)
+        for b in buckets:
+            self.assertAlmostEqual(b['total_power_watts'], 2000.0, delta=1.0)
+
+    def test_filters_out_shed_samples(self):
+        """Samples ingested while is_on=False must be excluded from the chart."""
+        fridge = Device.objects.create(
+            name='Fridge', device_id='f', priority=1, is_on=True,
+        )
+        iron = Device.objects.create(
+            name='Iron', device_id='i', priority=9, is_on=False,
+        )
+        for _ in range(3):
+            Telemetry.objects.create(device=fridge, power_watts=500, is_on=True)
+            Telemetry.objects.create(device=iron, power_watts=1500, is_on=False)
+
+        resp = self.client.get(self.url, {'minutes': 5})
+        buckets = resp.json()
+        self.assertGreater(len(buckets), 0)
+        for b in buckets:
+            self.assertAlmostEqual(b['total_power_watts'], 500.0, delta=1.0)

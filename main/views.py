@@ -98,7 +98,7 @@ class ChartDataView(APIView):
         since = timezone.now() - timedelta(minutes=window)
 
         per_device = (
-            Telemetry.objects.filter(timestamp__gte=since)
+            Telemetry.objects.filter(timestamp__gte=since, is_on=True)
             .annotate(bucket=TruncMinute('timestamp'))
             .values('bucket', 'device_id')
             .annotate(avg_power=Avg('power_watts'))
