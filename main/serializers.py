@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from .models import Device, SystemSettings, Telemetry
+from .models import BalancingEvent, Device, SystemSettings, Telemetry
 
 
 class DeviceSerializer(serializers.ModelSerializer):
@@ -115,4 +115,27 @@ class CurrentLoadSerializer(serializers.Serializer):
     is_active = serializers.BooleanField()
     restore_mode = serializers.CharField()
     restore_cooldown_seconds = serializers.IntegerField()
+    last_overload_at = serializers.DateTimeField(allow_null=True)
     devices = DeviceSerializer(many=True, read_only=True)
+
+
+class BalancingEventSerializer(serializers.ModelSerializer):
+    """Read-only audit record of a single shed/restore action."""
+
+    device_name = serializers.CharField(source='device.name', read_only=True)
+    device_public_id = serializers.CharField(source='device.device_id', read_only=True)
+
+    class Meta:
+        model = BalancingEvent
+        fields = (
+            'id',
+            'device',
+            'device_name',
+            'device_public_id',
+            'action',
+            'device_power_watts',
+            'total_power_watts',
+            'power_limit_watts',
+            'occurred_at',
+        )
+        read_only_fields = fields

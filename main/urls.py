@@ -16,6 +16,7 @@ urlpatterns = [
     path('chart-data/', views.ChartDataView.as_view(), name='chart-data'),
     path('settings/', views.SystemSettingsView.as_view(), name='system-settings'),
     path('current-load/', views.CurrentLoadView.as_view(), name='current-load'),
+    path('balancing-events/', views.BalancingEventsView.as_view(), name='balancing-events'),
 
     # CRUD
     path('', include(router.urls)),

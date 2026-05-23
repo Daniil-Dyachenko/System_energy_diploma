@@ -6,6 +6,7 @@
   const POLL_INTERVAL = 5000;
   const CHART_POLL_INTERVAL = 10000;
   const COOLDOWN_TICK = 1000;
+  const EVENTS_LIMIT = 20;
 
   // DOM refs
   const stateEl = document.getElementById('load-stat');
@@ -19,6 +20,8 @@
   const chartCanvas = document.getElementById('power-chart');
   const chartEmpty = document.getElementById('chart-empty');
   const chartToolbar = document.getElementById('chart-toolbar');
+  const eventsList = document.getElementById('events-list');
+  const eventsSubtitle = document.getElementById('events-subtitle');
 
   // Local state
   let chart = null;
@@ -27,6 +30,7 @@
   let loadTimer = null;
   let chartTimer = null;
   let cooldownTimer = null;
+  let lastSeenEventId = null;
 
   // Utilities
   function cssVar(name) {
@@ -128,6 +132,15 @@
         ? `Cooldown · ${remaining} с до restore`
         : 'Готово до restore';
     });
+    if (eventsList) {
+      eventsList.querySelectorAll('.event-time').forEach(el => {
+        const ts = el.getAttribute('datetime');
+        if (ts) el.textContent = fmtAgo(ts);
+      });
+    }
+    if (lastSnapshot.last_overload_at) {
+      updateEventsSubtitle(lastSnapshot.last_overload_at);
+    }
   }
 
   async function pollLoad() {
@@ -136,9 +149,69 @@
       lastSnapshot = data;
       applyLoad(data);
       renderDevices(data.devices);
+      updateEventsSubtitle(data.last_overload_at);
       tickCooldowns();
     } catch (e) {
       setStatus('error', 'Зв\'язок з сервером втрачено');
+    }
+  }
+
+  // Balancing events
+  function updateEventsSubtitle(lastOverloadAt) {
+    if (!eventsSubtitle) return;
+    eventsSubtitle.textContent = lastOverloadAt
+      ? 'Останнє перевантаження: ' + fmtAgo(lastOverloadAt)
+      : 'Останнє перевантаження: —';
+  }
+
+  function renderEvents(events) {
+    if (!eventsList) return;
+    if (!events || !events.length) {
+      eventsList.innerHTML = '<div class="empty-text">Подій балансування ще не було.</div>';
+      return;
+    }
+    const html = events.map(ev => {
+      const isShed = ev.action === 'SHED';
+      const cls = isShed ? 'event-row event-shed' : 'event-row event-restore';
+      const iconChar = isShed ? '↓' : '↑';
+      const verb = isShed ? 'Відключено' : 'Повернуто';
+      const name = escapeHtml(ev.device_name || ev.device_public_id || ('#' + ev.device));
+      const meta = `${fmtWatts(ev.device_power_watts || 0)} · ліміт ${fmtWatts(ev.power_limit_watts || 0)}`;
+      return `
+        <div class="${cls}" data-event-id="${ev.id}">
+          <span class="event-icon-wrap" aria-hidden="true">${iconChar}</span>
+          <div class="event-body">
+            <div class="event-line">${verb} <strong>${name}</strong></div>
+            <div class="event-meta">${meta}</div>
+          </div>
+          <time class="event-time" datetime="${escapeHtml(ev.occurred_at)}">${fmtAgo(ev.occurred_at)}</time>
+        </div>
+      `;
+    }).join('');
+    eventsList.innerHTML = html;
+  }
+
+  async function pollEvents() {
+    try {
+      const events = await apiFetch('/api/balancing-events/?limit=' + EVENTS_LIMIT, { toastOnError: false });
+      if (!Array.isArray(events)) return;
+
+      if (lastSeenEventId === null) {
+        lastSeenEventId = events.length ? Math.max.apply(null, events.map(e => e.id)) : 0;
+      } else {
+        const fresh = events
+          .filter(e => e.id > lastSeenEventId && e.action === 'SHED')
+          .sort((a, b) => a.id - b.id);
+        for (const ev of fresh) {
+          const name = ev.device_name || ev.device_public_id || ('#' + ev.device);
+          showToast(`Перевантаження! Відключено ${name}`, 'warning');
+        }
+        if (events.length) {
+          lastSeenEventId = Math.max(lastSeenEventId, Math.max.apply(null, events.map(e => e.id)));
+        }
+      }
+      renderEvents(events);
+    } catch (e) {
     }
   }
 
@@ -292,7 +365,8 @@
   function start() {
     pollLoad();
     pollChart();
-    loadTimer = setInterval(pollLoad, POLL_INTERVAL);
+    pollEvents();
+    loadTimer = setInterval(function () { pollLoad(); pollEvents(); }, POLL_INTERVAL);
     chartTimer = setInterval(pollChart, CHART_POLL_INTERVAL);
     cooldownTimer = setInterval(tickCooldowns, COOLDOWN_TICK);
   }

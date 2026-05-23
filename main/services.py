@@ -9,7 +9,7 @@ from typing import Iterable
 from django.db import transaction
 from django.utils import timezone
 
-from .models import Device, SystemSettings, Telemetry
+from .models import BalancingEvent, Device, SystemSettings, Telemetry
 
 
 logger = logging.getLogger(__name__)
@@ -124,6 +124,13 @@ def rebalance_load() -> BalancingReport:
             'Shed device %s (priority=%d, draw=%.1fW); new total=%.1fW',
             victim.device_id, victim.priority, victim.last_power_watts, total,
         )
+        BalancingEvent.objects.create(
+            device=victim,
+            action=BalancingEvent.Action.SHED,
+            device_power_watts=victim.last_power_watts,
+            total_power_watts=total,
+            power_limit_watts=settings_row.power_limit_watts,
+        )
 
     if settings_row.restore_mode == SystemSettings.RestoreMode.AUTO:
         while True:
@@ -136,6 +143,13 @@ def rebalance_load() -> BalancingReport:
             logger.info(
                 'Restored device %s (priority=%d, draw=%.1fW); new total=%.1fW',
                 restored.device_id, restored.priority, restored.last_power_watts, total,
+            )
+            BalancingEvent.objects.create(
+                device=restored,
+                action=BalancingEvent.Action.RESTORE,
+                device_power_watts=restored.last_power_watts,
+                total_power_watts=total,
+                power_limit_watts=settings_row.power_limit_watts,
             )
     else:
         logger.info('Restore phase skipped: restore_mode=MANUAL')

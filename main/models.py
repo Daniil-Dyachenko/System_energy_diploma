@@ -134,3 +134,41 @@ class SystemSettings(models.Model):
         """Return the singleton row, creating it on first access."""
         obj, _ = cls.objects.get_or_create(pk=1)
         return obj
+
+class BalancingEvent(models.Model):
+    """Audit record of an automatic shed/restore action."""
+
+    class Action(models.TextChoices):
+        SHED = 'SHED', 'Shed (turned off due to overload)'
+        RESTORE = 'RESTORE', 'Restore (turned back on after slack appeared)'
+
+    device = models.ForeignKey(
+        Device,
+        on_delete=models.CASCADE,
+        related_name='balancing_events',
+    )
+    action = models.CharField(max_length=8, choices=Action.choices)
+    device_power_watts = models.FloatField(
+        validators=[MinValueValidator(0.0)],
+        help_text='The device draw used by the algorithm when deciding to act.',
+    )
+    total_power_watts = models.FloatField(
+        validators=[MinValueValidator(0.0)],
+        help_text='Total system load AFTER this action was applied.',
+    )
+    power_limit_watts = models.PositiveIntegerField(
+        help_text='SystemSettings.power_limit_watts at the time of the event.',
+    )
+    occurred_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-occurred_at']
+        verbose_name = 'Balancing event'
+        verbose_name_plural = 'Balancing events'
+        indexes = [
+            models.Index(fields=['-occurred_at']),
+            models.Index(fields=['action', '-occurred_at']),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.action} {self.device.name} @ {self.occurred_at:%Y-%m-%d %H:%M:%S}'

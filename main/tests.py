@@ -6,10 +6,11 @@ from datetime import timedelta
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from .models import Device, SystemSettings, Telemetry
+from .models import BalancingEvent, Device, SystemSettings, Telemetry
 from .services import rebalance_load
 
 API_KEY = 'test-api-key'
@@ -435,3 +436,153 @@ class ChartDataEndpointTests(TestCase):
         self.assertGreater(len(buckets), 0)
         for b in buckets:
             self.assertAlmostEqual(b['total_power_watts'], 500.0, delta=1.0)
+
+
+
+class BalancingEventTests(TestCase):
+    """Notifications: every algorithmic action persists an audit row."""
+
+    def setUp(self):
+        SystemSettings.objects.update_or_create(
+            pk=1,
+            defaults={
+                'power_limit_watts': 2000,
+                'is_active': True,
+                'restore_mode': SystemSettings.RestoreMode.AUTO,
+                'restore_cooldown_seconds': 30,
+            },
+        )
+
+    def test_shed_creates_event(self):
+        """A shed action emits a BalancingEvent with action=SHED + the totals snapshot."""
+        Device.objects.create(
+            name='Fridge', device_id='fridge', priority=1,
+            is_on=True, last_power_watts=300,
+        )
+        Device.objects.create(
+            name='Iron', device_id='iron', priority=9,
+            is_on=True, last_power_watts=2200,
+        )
+
+        rebalance_load()
+
+        events = list(BalancingEvent.objects.all())
+        self.assertEqual(len(events), 1)
+        ev = events[0]
+        self.assertEqual(ev.action, BalancingEvent.Action.SHED)
+        self.assertEqual(ev.device.device_id, 'iron')
+        self.assertAlmostEqual(ev.device_power_watts, 2200)
+        self.assertAlmostEqual(ev.total_power_watts, 300)
+        self.assertEqual(ev.power_limit_watts, 2000)
+
+    def test_restore_creates_event(self):
+        """Auto-restore emits a BalancingEvent with action=RESTORE."""
+        Device.objects.create(
+            name='Fridge', device_id='fridge', priority=1,
+            is_on=True, last_power_watts=500,
+        )
+        Device.objects.create(
+            name='Iron', device_id='iron', priority=9,
+            is_on=False, last_power_watts=800,
+            shed_at=timezone.now() - timedelta(seconds=120),
+        )
+
+        rebalance_load()
+
+        restores = list(BalancingEvent.objects.filter(action=BalancingEvent.Action.RESTORE))
+        self.assertEqual(len(restores), 1)
+        ev = restores[0]
+        self.assertEqual(ev.device.device_id, 'iron')
+        self.assertAlmostEqual(ev.device_power_watts, 800)
+        self.assertAlmostEqual(ev.total_power_watts, 1300)
+        self.assertEqual(ev.power_limit_watts, 2000)
+
+    def test_inactive_logs_nothing(self):
+        """When the algorithm is paused no events are recorded."""
+        SystemSettings.objects.filter(pk=1).update(is_active=False)
+        Device.objects.create(
+            name='Iron', device_id='iron', priority=9,
+            is_on=True, last_power_watts=5000,
+        )
+
+        rebalance_load()
+
+        self.assertFalse(BalancingEvent.objects.exists())
+
+
+class BalancingEventsEndpointTests(TestCase):
+    """GET /api/balancing-events/ payload shape + limit handling."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.url = reverse('balancing-events')
+        self.device = Device.objects.create(
+            name='Iron', device_id='iron', priority=9,
+            is_on=False, last_power_watts=800,
+        )
+
+    def _make_event(self, action=BalancingEvent.Action.SHED):
+        return BalancingEvent.objects.create(
+            device=self.device,
+            action=action,
+            device_power_watts=800,
+            total_power_watts=1500,
+            power_limit_watts=2000,
+        )
+
+    def test_returns_recent_with_device_name(self):
+        self._make_event()
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        body = resp.json()
+        self.assertEqual(len(body), 1)
+        self.assertEqual(body[0]['device_name'], 'Iron')
+        self.assertEqual(body[0]['device_public_id'], 'iron')
+        self.assertEqual(body[0]['action'], 'SHED')
+
+    def test_respects_limit_param(self):
+        for _ in range(10):
+            self._make_event()
+        resp = self.client.get(self.url, {'limit': 5})
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(resp.json()), 5)
+
+    def test_orders_newest_first(self):
+        first = self._make_event(action=BalancingEvent.Action.SHED)
+        second = self._make_event(action=BalancingEvent.Action.RESTORE)
+        resp = self.client.get(self.url)
+        ids = [row['id'] for row in resp.json()]
+        self.assertEqual(ids, [second.id, first.id])
+
+
+class CurrentLoadLastOverloadTests(TestCase):
+    """Notifications: /api/current-load/ exposes last_overload_at."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.device = Device.objects.create(
+            name='Iron', device_id='iron', priority=9,
+            is_on=False, last_power_watts=800,
+        )
+
+    def test_null_when_no_overload_recorded(self):
+        resp = self.client.get(reverse('current-load'))
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIsNone(resp.json()['last_overload_at'])
+
+    def test_reflects_latest_shed_event(self):
+        BalancingEvent.objects.create(
+            device=self.device, action=BalancingEvent.Action.RESTORE,
+            device_power_watts=800, total_power_watts=1000, power_limit_watts=2000,
+        )
+        shed = BalancingEvent.objects.create(
+            device=self.device, action=BalancingEvent.Action.SHED,
+            device_power_watts=800, total_power_watts=1500, power_limit_watts=2000,
+        )
+
+        resp = self.client.get(reverse('current-load'))
+        body = resp.json()
+        self.assertIsNotNone(body['last_overload_at'])
+        returned = parse_datetime(body['last_overload_at'])
+        delta = abs((returned - shed.occurred_at).total_seconds())
+        self.assertLess(delta, 1.0)

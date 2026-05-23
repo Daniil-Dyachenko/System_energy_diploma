@@ -13,9 +13,10 @@ from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Device, SystemSettings, Telemetry
+from .models import BalancingEvent, Device, SystemSettings, Telemetry
 from .permissions import HasDeviceApiKey
 from .serializers import (
+    BalancingEventSerializer,
     ChartDataPointSerializer,
     CurrentLoadSerializer,
     DeviceSerializer,
@@ -142,6 +143,13 @@ class CurrentLoadView(APIView):
         devices = list(Device.objects.all())
         total = sum(d.last_power_watts for d in devices if d.is_on)
         settings_row = SystemSettings.load()
+        last_shed = (
+            BalancingEvent.objects
+            .filter(action=BalancingEvent.Action.SHED)
+            .order_by('-occurred_at')
+            .values_list('occurred_at', flat=True)
+            .first()
+        )
         payload = {
             'total_power_watts': total,
             'power_limit_watts': settings_row.power_limit_watts,
@@ -149,9 +157,33 @@ class CurrentLoadView(APIView):
             'is_active': settings_row.is_active,
             'restore_mode': settings_row.restore_mode,
             'restore_cooldown_seconds': settings_row.restore_cooldown_seconds,
+            'last_overload_at': last_shed,
             'devices': devices,
         }
         return Response(CurrentLoadSerializer(payload).data)
+
+
+
+class BalancingEventsView(APIView):
+    """GET /api/balancing-events/?limit=N — most recent shed/restore actions."""
+
+    permission_classes = [AllowAny]  # tightened in stage 5
+    DEFAULT_LIMIT = 20
+    MAX_LIMIT = 200
+
+    def get(self, request):
+        try:
+            limit = int(request.query_params.get('limit', self.DEFAULT_LIMIT))
+        except (TypeError, ValueError):
+            limit = self.DEFAULT_LIMIT
+        limit = max(1, min(limit, self.MAX_LIMIT))
+
+        events = (
+            BalancingEvent.objects
+            .select_related('device')
+            .order_by('-occurred_at')[:limit]
+        )
+        return Response(BalancingEventSerializer(events, many=True).data)
 
 
 class DeviceViewSet(viewsets.ModelViewSet):
