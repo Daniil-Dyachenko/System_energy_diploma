@@ -54,7 +54,7 @@
     }
     tbody.innerHTML = devices.map(d => `
       <tr data-id="${d.id}">
-        <td><strong>${escapeHtml(d.name)}</strong></td>
+        <td><a href="/devices/${d.id}/" class="device-name-link" title="Відкрити сторінку приладу"><strong>${escapeHtml(d.name)}</strong></a></td>
         <td class="device-id-cell">${escapeHtml(d.device_id)}</td>
         <td>
           <select class="select priority-input" data-action="priority" aria-label="Пріоритет">
@@ -89,7 +89,7 @@
       <article class="device-card" data-id="${d.id}">
         <div class="device-card-head">
           <div>
-            <span class="device-card-name">${escapeHtml(d.name)}</span>
+            <a href="/devices/${d.id}/" class="device-name-link"><span class="device-card-name">${escapeHtml(d.name)}</span></a>
             <span class="device-card-id">${escapeHtml(d.device_id)}</span>
           </div>
           ${statusBadge(d)}

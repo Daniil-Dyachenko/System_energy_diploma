@@ -4,8 +4,8 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import timedelta
 
-from django.db.models import Avg
-from django.db.models.functions import TruncMinute
+from django.db.models import Avg, Max, Min
+from django.db.models.functions import TruncHour, TruncMinute
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -13,12 +13,13 @@ from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import BalancingEvent, Device, SystemSettings, Telemetry
+from .models import BalancingEvent, Device, DeviceEvent, SystemSettings, Telemetry
 from .permissions import HasDeviceApiKey
 from .serializers import (
     BalancingEventSerializer,
     ChartDataPointSerializer,
     CurrentLoadSerializer,
+    DeviceHistorySerializer,
     DeviceSerializer,
     DeviceStateSerializer,
     SystemSettingsSerializer,
@@ -193,6 +194,56 @@ class DeviceViewSet(viewsets.ModelViewSet):
     serializer_class = DeviceSerializer
     permission_classes = [AllowAny]  # tightened in stage 5
 
+    @action(detail=True, methods=['get'], url_path='history', permission_classes=[AllowAny])
+    def history(self, request, pk=None):
+        """One-shot payload for the device-detail page."""
+        device: Device = self.get_object()
+        window_key = request.query_params.get('window', '1h')
+        window_minutes, granularity = _DEVICE_HISTORY_WINDOWS.get(
+            window_key, _DEVICE_HISTORY_WINDOWS['1h'],
+        )
+        now = timezone.now()
+
+        sample_bounds = (
+            Telemetry.objects
+            .filter(device=device, is_on=True)
+            .aggregate(first=Min('timestamp'), last=Max('timestamp'))
+        )
+        first_sample = sample_bounds['first']
+        last_sample = sample_bounds['last']
+
+        if last_sample is None:
+            chart_data: list[dict] = []
+        else:
+            anchor_until = last_sample
+            anchor_since = max(
+                anchor_until - timedelta(minutes=window_minutes),
+                first_sample,
+            )
+            chart_data = _build_device_chart(
+                device, anchor_since, anchor_until, granularity,
+            )
+
+        events = list(
+            DeviceEvent.objects
+            .filter(device=device)
+            .order_by('-occurred_at')[:50]
+        )
+        metrics = _compute_device_metrics(
+            device, now, window_minutes,
+            first_sample=first_sample, last_sample=last_sample,
+        )
+
+        payload = {
+            'device': device,
+            'window': window_key,
+            'window_seconds': window_minutes * 60,
+            'chart_data': chart_data,
+            'events': events,
+            'metrics': metrics,
+        }
+        return Response(DeviceHistorySerializer(payload).data)
+
     @action(detail=True, methods=['post'], url_path='toggle')
     def toggle(self, request, pk=None):
         """Manual relay toggle from the web UI (bypasses the balancing alg)."""
@@ -203,4 +254,104 @@ class DeviceViewSet(viewsets.ModelViewSet):
             device.shed_at = None
             update_fields.append('shed_at')
         device.save(update_fields=update_fields)
+        DeviceEvent.objects.create(
+            device=device,
+            action=(
+                DeviceEvent.Action.MANUAL_ON if device.is_on
+                else DeviceEvent.Action.MANUAL_OFF
+            ),
+            power_watts=device.last_power_watts,
+        )
         return Response(DeviceSerializer(device).data)
+
+_DEVICE_HISTORY_WINDOWS = {
+    '5m': (5, 'minute'),
+    '1h': (60, 'minute'),
+    '1d': (24 * 60, 'hour'),
+    '7d': (7 * 24 * 60, 'hour'),
+}
+
+_ON_ACTIONS = frozenset((DeviceEvent.Action.RESTORE, DeviceEvent.Action.MANUAL_ON))
+
+
+def _build_device_chart(device: Device, since, until, granularity: str) -> list[dict]:
+    """Aggregate per-device telemetry into (timestamp, power_watts) buckets."""
+
+    trunc = TruncMinute('timestamp') if granularity == 'minute' else TruncHour('timestamp')
+    rows = (
+        Telemetry.objects
+        .filter(
+            device=device,
+            timestamp__gte=since,
+            timestamp__lte=until,
+            is_on=True,
+        )
+        .annotate(bucket=trunc)
+        .values('bucket')
+        .annotate(avg_power=Avg('power_watts'))
+        .order_by('bucket')
+    )
+    return [
+        {'timestamp': r['bucket'], 'power_watts': float(r['avg_power'] or 0.0)}
+        for r in rows
+    ]
+
+
+def _compute_device_metrics(
+    device: Device,
+    now,
+    window_minutes: int,
+    first_sample,
+    last_sample,
+) -> dict:
+    """Compute avg / peak / on-time / energy."""
+
+    if last_sample is None:
+        avg_watts = 0.0
+        peak_watts = 0.0
+        energy_kwh = 0.0
+    else:
+        chart_until = last_sample
+        chart_since = max(
+            chart_until - timedelta(minutes=window_minutes),
+            first_sample,
+        )
+        agg = (
+            Telemetry.objects
+            .filter(
+                device=device,
+                timestamp__gte=chart_since,
+                timestamp__lte=chart_until,
+                is_on=True,
+            )
+            .aggregate(avg=Avg('power_watts'), peak=Max('power_watts'))
+        )
+        avg_watts = float(agg['avg'] or 0.0)
+        peak_watts = float(agg['peak'] or 0.0)
+        covered_hours = max(0.0, (chart_until - chart_since).total_seconds() / 3600.0)
+        energy_kwh = (avg_watts * covered_hours) / 1000.0
+
+    on_seconds = _current_on_session_seconds(device, now)
+
+    return {
+        'average_watts': round(avg_watts, 2),
+        'peak_watts': round(peak_watts, 2),
+        'on_time_seconds': int(on_seconds),
+        'energy_kwh': round(energy_kwh, 4),
+    }
+
+
+def _current_on_session_seconds(device: Device, now) -> float:
+    """Return seconds since the device most recently entered the ON state."""
+
+    if not device.is_on:
+        return 0.0
+
+    last_on_event = (
+        DeviceEvent.objects
+        .filter(device=device, action__in=tuple(_ON_ACTIONS))
+        .order_by('-occurred_at')
+        .first()
+    )
+    started_at = last_on_event.occurred_at if last_on_event else device.created_at
+    return max(0.0, (now - started_at).total_seconds())

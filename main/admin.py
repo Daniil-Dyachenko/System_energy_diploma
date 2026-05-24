@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import BalancingEvent, Device, SystemSettings, Telemetry
+from .models import BalancingEvent, Device, DeviceEvent, SystemSettings, Telemetry
 
 
 @admin.register(Device)
@@ -42,6 +42,19 @@ class TelemetryAdmin(admin.ModelAdmin):
     date_hierarchy = 'timestamp'
     readonly_fields = ('timestamp',)
     ordering = ('-timestamp',)
+
+
+@admin.register(DeviceEvent)
+class DeviceEventAdmin(admin.ModelAdmin):
+    list_display = ('occurred_at', 'action', 'device', 'power_watts')
+    list_filter = ('action', 'device')
+    search_fields = ('device__name', 'device__device_id')
+    date_hierarchy = 'occurred_at'
+    readonly_fields = ('device', 'action', 'power_watts', 'occurred_at')
+    ordering = ('-occurred_at',)
+
+    def has_add_permission(self, request):
+        return False
 
 
 @admin.register(BalancingEvent)

@@ -10,7 +10,7 @@ from django.utils.dateparse import parse_datetime
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from .models import BalancingEvent, Device, SystemSettings, Telemetry
+from .models import BalancingEvent, Device, DeviceEvent, SystemSettings, Telemetry
 from .services import rebalance_load
 
 API_KEY = 'test-api-key'
@@ -586,3 +586,211 @@ class CurrentLoadLastOverloadTests(TestCase):
         returned = parse_datetime(body['last_overload_at'])
         delta = abs((returned - shed.occurred_at).total_seconds())
         self.assertLess(delta, 1.0)
+
+class DeviceEventLoggingTests(TestCase):
+    """Device-detail: every relay state change persists a DeviceEvent."""
+
+    def setUp(self):
+        SystemSettings.objects.update_or_create(
+            pk=1,
+            defaults={
+                'power_limit_watts': 2000,
+                'is_active': True,
+                'restore_mode': SystemSettings.RestoreMode.AUTO,
+                'restore_cooldown_seconds': 30,
+            },
+        )
+
+    def test_auto_shed_creates_device_event(self):
+        Device.objects.create(
+            name='Fridge', device_id='fridge', priority=1,
+            is_on=True, last_power_watts=300,
+        )
+        iron = Device.objects.create(
+            name='Iron', device_id='iron', priority=9,
+            is_on=True, last_power_watts=2200,
+        )
+
+        rebalance_load()
+
+        events = DeviceEvent.objects.filter(device=iron)
+        self.assertEqual(events.count(), 1)
+        self.assertEqual(events.first().action, DeviceEvent.Action.SHED)
+
+    def test_auto_restore_creates_device_event(self):
+        Device.objects.create(
+            name='Fridge', device_id='fridge', priority=1,
+            is_on=True, last_power_watts=500,
+        )
+        iron = Device.objects.create(
+            name='Iron', device_id='iron', priority=9,
+            is_on=False, last_power_watts=800,
+            shed_at=timezone.now() - timedelta(seconds=120),
+        )
+
+        rebalance_load()
+
+        restore = DeviceEvent.objects.filter(device=iron, action=DeviceEvent.Action.RESTORE)
+        self.assertEqual(restore.count(), 1)
+
+    def test_manual_toggle_logs_manual_on(self):
+        device = Device.objects.create(
+            name='Iron', device_id='iron', priority=9,
+            is_on=False, last_power_watts=800,
+        )
+        client = APIClient()
+        client.post(reverse('device-toggle', kwargs={'pk': device.pk}))
+
+        events = DeviceEvent.objects.filter(device=device)
+        self.assertEqual(events.count(), 1)
+        self.assertEqual(events.first().action, DeviceEvent.Action.MANUAL_ON)
+
+    def test_manual_toggle_logs_manual_off(self):
+        device = Device.objects.create(
+            name='Iron', device_id='iron', priority=9,
+            is_on=True, last_power_watts=800,
+        )
+        client = APIClient()
+        client.post(reverse('device-toggle', kwargs={'pk': device.pk}))
+
+        events = DeviceEvent.objects.filter(device=device)
+        self.assertEqual(events.count(), 1)
+        self.assertEqual(events.first().action, DeviceEvent.Action.MANUAL_OFF)
+
+
+class DeviceHistoryEndpointTests(TestCase):
+    """/api/devices/<id>/history/ payload shape + metric correctness."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.device = Device.objects.create(
+            name='Boiler', device_id='boiler', priority=3,
+            is_on=True, last_power_watts=1500,
+        )
+        for _ in range(5):
+            Telemetry.objects.create(device=self.device, power_watts=1500, is_on=True)
+
+    def _url(self, **params):
+        base = reverse('device-history', kwargs={'pk': self.device.pk})
+        if not params:
+            return base
+        from urllib.parse import urlencode
+        return f'{base}?{urlencode(params)}'
+
+    def test_returns_full_payload_shape(self):
+        resp = self.client.get(self._url(window='1h'))
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        body = resp.json()
+        self.assertIn('device', body)
+        self.assertEqual(body['device']['device_id'], 'boiler')
+        self.assertEqual(body['window'], '1h')
+        self.assertEqual(body['window_seconds'], 3600)
+        self.assertIn('chart_data', body)
+        self.assertIn('events', body)
+        self.assertIn('metrics', body)
+        for key in ('average_watts', 'peak_watts', 'on_time_seconds', 'energy_kwh'):
+            self.assertIn(key, body['metrics'])
+        self.assertNotIn('on_time_percent', body['metrics'])
+
+    def test_avg_and_peak_reflect_telemetry(self):
+        resp = self.client.get(self._url(window='1h'))
+        m = resp.json()['metrics']
+        self.assertAlmostEqual(m['average_watts'], 1500.0, delta=0.1)
+        self.assertAlmostEqual(m['peak_watts'], 1500.0, delta=0.1)
+
+    def test_invalid_window_defaults_to_1h(self):
+        resp = self.client.get(self._url(window='garbage'))
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.json()['window_seconds'], 3600)
+
+    def test_on_time_zero_when_device_off(self):
+        """OFF device → on_time resets to 0 (the counter is current-session only)."""
+        Device.objects.filter(pk=self.device.pk).update(is_on=False)
+        resp = self.client.get(self._url(window='1h'))
+        self.assertEqual(resp.json()['metrics']['on_time_seconds'], 0)
+
+    def test_on_time_counts_from_last_on_event(self):
+        """ON device → on_time = seconds since the most recent MANUAL_ON/RESTORE event."""
+        now = timezone.now()
+        old_on = DeviceEvent.objects.create(
+            device=self.device, action=DeviceEvent.Action.MANUAL_ON, power_watts=0,
+        )
+        DeviceEvent.objects.filter(pk=old_on.pk).update(occurred_at=now - timedelta(hours=2))
+        old_off = DeviceEvent.objects.create(
+            device=self.device, action=DeviceEvent.Action.MANUAL_OFF, power_watts=0,
+        )
+        DeviceEvent.objects.filter(pk=old_off.pk).update(occurred_at=now - timedelta(hours=1))
+        latest_on = DeviceEvent.objects.create(
+            device=self.device, action=DeviceEvent.Action.MANUAL_ON, power_watts=0,
+        )
+        DeviceEvent.objects.filter(pk=latest_on.pk).update(occurred_at=now - timedelta(minutes=30))
+        Device.objects.filter(pk=self.device.pk).update(is_on=True)
+
+        resp = self.client.get(self._url(window='1h'))
+        m = resp.json()['metrics']
+        self.assertGreater(m['on_time_seconds'], 1700)
+        self.assertLess(m['on_time_seconds'], 1900)
+
+    def test_on_time_falls_back_to_created_at_without_events(self):
+        """Fresh always-on device with no toggle events → counts from created_at."""
+        now = timezone.now()
+        Device.objects.filter(pk=self.device.pk).update(
+            is_on=True,
+            created_at=now - timedelta(minutes=45),
+        )
+        resp = self.client.get(self._url(window='1h'))
+        m = resp.json()['metrics']
+        self.assertGreater(m['on_time_seconds'], 2600)
+        self.assertLess(m['on_time_seconds'], 2800)
+
+    def test_on_time_resets_after_off_on_toggle(self):
+        """Toggling OFF then ON again puts the counter back near zero."""
+        client = APIClient()
+        url = reverse('device-toggle', kwargs={'pk': self.device.pk})
+        client.post(url)
+        client.post(url)
+
+        resp = self.client.get(self._url(window='1h'))
+        m = resp.json()['metrics']
+        self.assertLess(m['on_time_seconds'], 5)
+
+    def test_chart_anchored_to_last_sample(self):
+        """Quiet device: 5m window still includes the last samples even if they're old."""
+        Telemetry.objects.filter(device=self.device).update(
+            timestamp=timezone.now() - timedelta(minutes=30),
+        )
+        resp = self.client.get(self._url(window='5m'))
+        chart = resp.json()['chart_data']
+        self.assertGreater(len(chart), 0, 'pre-fix this would be empty')
+
+    def test_energy_uses_actual_coverage_not_window(self):
+        """A device with only 30 min of history shouldn't report a full 1h of energy."""
+        Telemetry.objects.filter(device=self.device).delete()
+        old = Telemetry.objects.create(device=self.device, power_watts=1500, is_on=True)
+        Telemetry.objects.filter(pk=old.pk).update(
+            timestamp=timezone.now() - timedelta(minutes=30),
+        )
+        Telemetry.objects.create(device=self.device, power_watts=1500, is_on=True)
+
+        resp = self.client.get(self._url(window='1h'))
+        m = resp.json()['metrics']
+        self.assertGreater(m['energy_kwh'], 0.6)
+        self.assertLess(m['energy_kwh'], 0.9)
+
+    def test_events_returned_regardless_of_window(self):
+        """Timeline shows recent toggles even when the chart window is narrow."""
+        ev = DeviceEvent.objects.create(
+            device=self.device, action=DeviceEvent.Action.MANUAL_ON, power_watts=0,
+        )
+        DeviceEvent.objects.filter(pk=ev.pk).update(
+            occurred_at=timezone.now() - timedelta(days=1),
+        )
+        resp = self.client.get(self._url(window='5m'))
+        events = resp.json()['events']
+        self.assertEqual(len(events), 1)
+
+    def test_unknown_device_returns_404(self):
+        resp = self.client.get(
+            reverse('device-history', kwargs={'pk': 99999})
+        )
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)

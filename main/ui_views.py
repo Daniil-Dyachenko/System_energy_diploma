@@ -5,6 +5,7 @@ LoginRequiredMixin so an unauthenticated visitor is redirected to /login/.
 from __future__ import annotations
 
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.shortcuts import get_object_or_404
 from django.views.generic import TemplateView
 
 from .models import Device
@@ -19,6 +20,18 @@ class DevicesView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
+        ctx['priority_choices'] = range(Device.PRIORITY_MIN, Device.PRIORITY_MAX + 1)
+        return ctx
+
+class DeviceDetailView(LoginRequiredMixin, TemplateView):
+    """Per-device page: live numbers + history graph + state-change timeline."""
+
+    template_name = 'device_detail.html'
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        device = get_object_or_404(Device, pk=kwargs['pk'])
+        ctx['device'] = device
         ctx['priority_choices'] = range(Device.PRIORITY_MIN, Device.PRIORITY_MAX + 1)
         return ctx
 

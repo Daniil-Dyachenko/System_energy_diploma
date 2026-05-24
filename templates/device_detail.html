@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ device.name }} · Energy Monitor{% endblock %}
+{% block page_title %}
+  <a href="{% url 'devices-page' %}" class="back-link" aria-label="Назад до списку приладів">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+    <span>Прилади</span>
+  </a>
+  <span class="page-title-sep">/</span>
+  <span>{{ device.name }}</span>
+{% endblock %}
+
+{% block content %}
+<div class="device-detail"
+     data-device-id="{{ device.id }}"
+     data-device-public-id="{{ device.device_id }}">
+
+  <section class="card device-live-card" aria-label="Поточний стан приладу">
+    <div class="card-header device-live-head">
+      <div class="device-live-titles">
+        <span class="card-title">{{ device.name }}</span>
+        <div class="card-subtitle mono">{{ device.device_id }}</div>
+      </div>
+      <div class="device-live-controls">
+        <span class="badge badge-muted" id="device-status"><span class="dot"></span>—</span>
+        <label class="toggle" title="Перемкнути реле">
+          <input type="checkbox" id="device-toggle">
+          <span class="slider"></span>
+          <span>Реле</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="device-stat-row">
+      <div class="device-stat-primary">
+        <div class="stat-value">
+          <span id="device-current">—</span><span class="unit">Вт</span>
+        </div>
+        <div class="stat-sub">
+          останній сигнал <span id="device-last-seen" class="mono">—</span>
+        </div>
+        <div class="stat-sub" id="device-shed-line" hidden>
+          shed: <span id="device-shed-at" class="mono">—</span>
+        </div>
+      </div>
+
+      <div class="metrics-row">
+        <div class="metric-tile">
+          <span class="metric-label">Середня</span>
+          <span class="metric-value" id="metric-avg">— Вт</span>
+          <span class="metric-sub">за обраний період</span>
+        </div>
+        <div class="metric-tile">
+          <span class="metric-label">Пік</span>
+          <span class="metric-value" id="metric-peak">— Вт</span>
+          <span class="metric-sub">максимум за період</span>
+        </div>
+        <div class="metric-tile">
+          <span class="metric-label">Час роботи</span>
+          <span class="metric-value" id="metric-ontime">—</span>
+          <span class="metric-sub">час безперервної роботи</span>
+        </div>
+        <div class="metric-tile">
+          <span class="metric-label">Енергія</span>
+          <span class="metric-value" id="metric-energy">— кВт·год</span>
+          <span class="metric-sub">спожито за період</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card chart-card" aria-label="Графік споживання приладу">
+    <div class="card-header">
+      <span class="card-title">Споживання у часі</span>
+      <div class="chart-toolbar" id="chart-toolbar" role="tablist" aria-label="Період">
+        <button type="button" class="chart-range" data-window="5m" role="tab">5 хв</button>
+        <button type="button" class="chart-range is-active" data-window="1h" role="tab" aria-selected="true">1 год</button>
+        <button type="button" class="chart-range" data-window="1d" role="tab">1 день</button>
+        <button type="button" class="chart-range" data-window="7d" role="tab">7 днів</button>
+      </div>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="device-chart" aria-label="Лінійний графік споживання приладу за обраний період"></canvas>
+      <div class="empty-text hidden" id="chart-empty">Поки що немає телеметрії за обраний період.</div>
+    </div>
+  </section>
+
+  <div class="device-detail-bottom">
+
+    <section class="card timeline-card" aria-label="Історія перемикань">
+      <div class="card-header">
+        <div>
+          <span class="card-title">Історія перемикань</span>
+          <div class="card-subtitle" id="timeline-subtitle">завантаження…</div>
+        </div>
+      </div>
+      <div class="events-list timeline-list" id="timeline-list" role="log" aria-live="polite">
+        <div class="empty-text">завантаження…</div>
+      </div>
+    </section>
+
+    <section class="card edit-card" aria-label="Параметри приладу">
+      <div class="card-header">
+        <span class="card-title">Параметри</span>
+      </div>
+      <form class="form" id="edit-form" novalidate>
+        <div class="field">
+          <label for="edit-priority" class="field-label">Пріоритет</label>
+          <select id="edit-priority" name="priority" class="select">
+            {% for n in priority_choices %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
+          </select>
+          <div class="field-hint">1 — найвищий (відключається останнім).</div>
+        </div>
+        <div class="field">
+          <label for="edit-description" class="field-label">Опис</label>
+          <textarea id="edit-description" name="description" class="textarea" rows="4" placeholder="Опціонально"></textarea>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" id="edit-reset">Скинути</button>
+          <button type="submit" class="btn btn-primary" id="edit-save">Зберегти</button>
+        </div>
+      </form>
+    </section>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
+<script src="{% static 'js/device_detail.js' %}" defer></script>
+{% endblock %}

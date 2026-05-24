@@ -172,3 +172,37 @@ class BalancingEvent(models.Model):
 
     def __str__(self) -> str:
         return f'{self.action} {self.device.name} @ {self.occurred_at:%Y-%m-%d %H:%M:%S}'
+
+class DeviceEvent(models.Model):
+    """Per-device timeline of every relay state change."""
+
+    class Action(models.TextChoices):
+        SHED = 'SHED', 'Auto-shed by balancing algorithm'
+        RESTORE = 'RESTORE', 'Auto-restored by balancing algorithm'
+        MANUAL_ON = 'MANUAL_ON', 'Manually switched on by operator'
+        MANUAL_OFF = 'MANUAL_OFF', 'Manually switched off by operator'
+
+    device = models.ForeignKey(
+        Device,
+        on_delete=models.CASCADE,
+        related_name='events',
+    )
+    action = models.CharField(max_length=12, choices=Action.choices)
+    power_watts = models.FloatField(
+        default=0.0,
+        validators=[MinValueValidator(0.0)],
+        help_text='Snapshot of last_power_watts at the time of the action.',
+    )
+    occurred_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-occurred_at']
+        verbose_name = 'Device event'
+        verbose_name_plural = 'Device events'
+        indexes = [
+            models.Index(fields=['device', '-occurred_at']),
+            models.Index(fields=['action', '-occurred_at']),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.action} {self.device.name} @ {self.occurred_at:%Y-%m-%d %H:%M:%S}'

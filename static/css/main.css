@@ -871,6 +871,130 @@ svg { flex-shrink: 0; }
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+.event-row.event-manual-on .event-icon-wrap {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+.event-row.event-manual-off .event-icon-wrap {
+  background: var(--color-surface-overlay);
+  color: var(--color-text-muted);
+}
+/* Device-detail page */
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-text-muted);
+  font-weight: 500;
+  font-size: 14px;
+  padding: 4px 8px;
+  margin-right: 4px;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.back-link:hover {
+  background: var(--color-surface-overlay);
+  color: var(--color-text);
+  text-decoration: none;
+}
+.back-link svg { width: 16px; height: 16px; }
+.page-title-sep {
+  color: var(--color-text-subtle);
+  margin: 0 var(--space-2);
+  font-weight: 400;
+}
+
+.device-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.device-live-card { padding: var(--space-5); }
+.device-live-head {
+  align-items: flex-start;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+.device-live-titles { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.device-live-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.device-stat-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) 1fr;
+  gap: var(--space-5);
+  align-items: stretch;
+  margin-top: var(--space-4);
+}
+.device-stat-primary {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: var(--space-4);
+  background: var(--color-surface-overlay);
+  border-radius: var(--radius-lg);
+}
+.device-stat-primary .stat-value { font-size: 48px; }
+.device-stat-primary .stat-sub { margin-top: var(--space-2); }
+
+.metrics-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3);
+}
+.metric-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-overlay);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+.metric-tile:hover {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-raised);
+}
+.metric-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+.metric-value {
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+  font-family: var(--font-mono);
+}
+.metric-sub {
+  font-size: 12px;
+  color: var(--color-text-subtle);
+}
+
+.device-detail-bottom {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: var(--space-5);
+  align-items: start;
+}
+.timeline-card .timeline-list {
+  max-height: 480px;
+}
+.edit-card .form { padding: var(--space-4) 0 0; }
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+}
 
 /* 10. DEVICES LIST */
 .devices-table {
@@ -898,6 +1022,17 @@ svg { flex-shrink: 0; }
   color: var(--color-text-muted);
 }
 .devices-table tbody tr:hover { background: var(--color-surface-overlay); }
+device-name-link {
+  color: var(--color-text);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.device-name-link:hover {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+  text-decoration: none;
+}
 .devices-table .priority-input {
   width: 64px;
   text-align: center;
@@ -1115,6 +1250,11 @@ svg { flex-shrink: 0; }
   .devices-cards { display: flex; flex-direction: column; gap: var(--space-3); }
 
   .form-row { grid-template-columns: 1fr; }
+
+  /* Device-detail responsive */
+  .device-stat-row { grid-template-columns: 1fr; }
+  .metrics-row { grid-template-columns: repeat(2, 1fr); }
+  .device-detail-bottom { grid-template-columns: 1fr; }
 }
 
 @media (min-width: 1024px) {
@@ -1128,6 +1268,10 @@ svg { flex-shrink: 0; }
   .topbar-actions { gap: var(--space-2); }
   .status-pill .status-label-prefix { display: none; }
   .card { padding: var(--space-4); }
+
+  .device-stat-primary .stat-value { font-size: 40px; }
+  .metric-value { font-size: 18px; }
+  .page-title-sep { margin: 0 var(--space-1); }
 }
 
 @media (prefers-reduced-motion: reduce) {

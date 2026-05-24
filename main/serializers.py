@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from .models import BalancingEvent, Device, SystemSettings, Telemetry
+from .models import BalancingEvent, Device, DeviceEvent, SystemSettings, Telemetry
 
 
 class DeviceSerializer(serializers.ModelSerializer):
@@ -117,6 +117,42 @@ class CurrentLoadSerializer(serializers.Serializer):
     restore_cooldown_seconds = serializers.IntegerField()
     last_overload_at = serializers.DateTimeField(allow_null=True)
     devices = DeviceSerializer(many=True, read_only=True)
+
+
+class DeviceEventSerializer(serializers.ModelSerializer):
+    """Read-only audit row of a single relay state change (auto or manual)."""
+
+    class Meta:
+        model = DeviceEvent
+        fields = ('id', 'action', 'power_watts', 'occurred_at')
+        read_only_fields = fields
+
+
+class DeviceHistoryMetricsSerializer(serializers.Serializer):
+    """Aggregated numbers shown in the live card next to the chart."""
+
+    average_watts = serializers.FloatField()
+    peak_watts = serializers.FloatField()
+    on_time_seconds = serializers.IntegerField()
+    energy_kwh = serializers.FloatField()
+
+
+class DeviceHistoryPointSerializer(serializers.Serializer):
+    """One bucket of the per-device power chart."""
+
+    timestamp = serializers.DateTimeField()
+    power_watts = serializers.FloatField()
+
+
+class DeviceHistorySerializer(serializers.Serializer):
+    """One-shot payload for the device-detail page: live + chart + events."""
+
+    device = DeviceSerializer()
+    window = serializers.CharField()
+    window_seconds = serializers.IntegerField()
+    chart_data = DeviceHistoryPointSerializer(many=True)
+    events = DeviceEventSerializer(many=True)
+    metrics = DeviceHistoryMetricsSerializer()
 
 
 class BalancingEventSerializer(serializers.ModelSerializer):
