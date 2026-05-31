@@ -794,3 +794,160 @@ class DeviceHistoryEndpointTests(TestCase):
             reverse('device-history', kwargs={'pk': 99999})
         )
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class TariffSettingsTests(TestCase):
+    """tariff_uah_per_kwh defaults + persistence via /api/settings/."""
+
+    def test_default_tariff_is_4_32(self):
+        """Fresh SystemSettings row must default to the tariff 4.32."""
+        from decimal import Decimal
+        settings_row = SystemSettings.load()
+        self.assertEqual(settings_row.tariff_uah_per_kwh, Decimal('4.32'))
+
+    def test_get_settings_exposes_tariff(self):
+        client = APIClient()
+        resp = client.get(reverse('system-settings'))
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIn('tariff_uah_per_kwh', resp.json())
+        self.assertEqual(resp.json()['tariff_uah_per_kwh'], '4.32')
+
+    def test_post_settings_updates_tariff(self):
+        """POST /api/settings/ with a new tariff persists the value."""
+        from decimal import Decimal
+        client = APIClient()
+        resp = client.post(
+            reverse('system-settings'),
+            {'tariff_uah_per_kwh': '5.50'},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.content)
+        SystemSettings.load().refresh_from_db()
+        self.assertEqual(
+            SystemSettings.load().tariff_uah_per_kwh,
+            Decimal('5.50'),
+        )
+
+    def test_negative_tariff_rejected(self):
+        client = APIClient()
+        resp = client.post(
+            reverse('system-settings'),
+            {'tariff_uah_per_kwh': '-1.00'},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class AccountSummaryEndpointTests(TestCase):
+    """GET /api/account/summary/ shape + period semantics."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.url = reverse('account-summary')
+        self.fridge = Device.objects.create(
+            name='Fridge', device_id='fridge', priority=1,
+            is_on=True, last_power_watts=300,
+        )
+        self.boiler = Device.objects.create(
+            name='Boiler', device_id='boiler', priority=3,
+            is_on=True, last_power_watts=1500,
+        )
+
+    def _seed(self, device, *, count, watts, is_on=True, when=None):
+        for _ in range(count):
+            sample = Telemetry.objects.create(
+                device=device, power_watts=watts, is_on=is_on,
+            )
+            if when is not None:
+                Telemetry.objects.filter(pk=sample.pk).update(timestamp=when)
+
+    def test_default_window_is_last_30_days(self):
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        body = resp.json()
+        self.assertIn('period', body)
+        self.assertEqual(body['period']['days'], 30)
+        # tariff comes from defaults
+        self.assertEqual(body['tariff_uah_per_kwh'], '4.32')
+
+    def test_payload_shape(self):
+        """All Cabinet UI fields are present and devices array is populated."""
+        resp = self.client.get(self.url)
+        body = resp.json()
+        for key in (
+            'period', 'tariff_uah_per_kwh',
+            'period_kwh', 'period_uah', 'lifetime_kwh', 'lifetime_uah',
+            'devices',
+        ):
+            self.assertIn(key, body)
+        self.assertEqual(len(body['devices']), 2)
+        for row in body['devices']:
+            for key in (
+                'id', 'name', 'device_id', 'priority', 'is_on',
+                'period_kwh', 'period_uah', 'lifetime_kwh', 'lifetime_uah',
+            ):
+                self.assertIn(key, row)
+
+    def test_since_after_until_returns_400(self):
+        resp = self.client.get(
+            self.url, {'since': '2026-06-01', 'until': '2026-05-01'},
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('detail', resp.json())
+
+    def test_malformed_date_returns_400(self):
+        resp = self.client.get(self.url, {'since': 'not-a-date'})
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_lifetime_includes_samples_outside_window(self):
+        """Telemetry from before the period must still count toward lifetime."""
+        self._seed(self.boiler, count=60, watts=1500)
+        old_ts = timezone.now() - timedelta(days=180)
+        self._seed(self.boiler, count=1, watts=2000, when=old_ts)
+
+        resp = self.client.get(self.url)
+        body = resp.json()
+        boiler_row = next(d for d in body['devices'] if d['name'] == 'Boiler')
+        self.assertGreater(boiler_row['lifetime_kwh'], boiler_row['period_kwh'])
+
+    def test_cost_equals_kwh_times_tariff(self):
+        """UAH values must equal kWh * tariff for each row + the totals."""
+        from decimal import Decimal
+        SystemSettings.objects.update_or_create(
+            pk=1, defaults={'tariff_uah_per_kwh': Decimal('5.00')},
+        )
+        self._seed(self.fridge, count=60, watts=600)
+        self._seed(self.boiler, count=60, watts=1200)
+
+        resp = self.client.get(self.url)
+        body = resp.json()
+        for row in body['devices']:
+            expected = round(row['period_kwh'] * 5.0, 2)
+            self.assertAlmostEqual(row['period_uah'], expected, places=2)
+        self.assertAlmostEqual(
+            body['period_uah'],
+            round(body['period_kwh'] * 5.0, 2),
+            places=2,
+        )
+
+    def test_shed_samples_excluded_from_energy(self):
+        """Samples ingested while device was algorithmically shed must not count."""
+        self._seed(self.fridge, count=10, watts=500, is_on=True)
+        self._seed(self.fridge, count=10, watts=500, is_on=False)
+
+        resp = self.client.get(self.url)
+        fridge_row = next(d for d in resp.json()['devices'] if d['name'] == 'Fridge')
+        self.assertGreater(fridge_row['period_kwh'], 0)
+        self.assertLess(fridge_row['period_kwh'], 0.02)
+
+    def test_empty_database_returns_zeros(self):
+        """No devices, no telemetry, then totals are 0 but payload still valid."""
+        Telemetry.objects.all().delete()
+        Device.objects.all().delete()
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        body = resp.json()
+        self.assertEqual(body['period_kwh'], 0.0)
+        self.assertEqual(body['lifetime_kwh'], 0.0)
+        self.assertEqual(body['period_uah'], 0.0)
+        self.assertEqual(body['devices'], [])
