@@ -29,6 +29,7 @@
         {% url 'dashboard' as dashboard_url %}
         {% url 'devices-page' as devices_url %}
         {% url 'settings-page' as settings_url %}
+        {% url 'account-page' as account_url %}
         <a href="{{ dashboard_url }}" class="nav-item{% if request.path == dashboard_url %} is-active{% endif %}">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
           <span>Дашборд</span>
@@ -52,10 +53,10 @@
 
         {% if user.is_authenticated %}
           <div class="user-block">
-            <div class="user-info">
+            <a href="{{ account_url }}" class="user-info{% if request.path == account_url %} is-active{% endif %}" aria-label="Кабінет користувача" title="Кабінет користувача">
               <span class="user-avatar" aria-hidden="true">{{ user.username|first|upper }}</span>
               <span class="user-name">{{ user.username }}</span>
-            </div>
+            </a>
             <form method="post" action="{% url 'logout' %}" class="logout-form">
               {% csrf_token %}
               <button type="submit" class="logout-btn" aria-label="Вийти">
@@ -107,6 +108,10 @@
       <a href="{{ settings_url }}" class="tab{% if request.path == settings_url %} is-active{% endif %}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         <span>Налаштув.</span>
+      </a>
+      <a href="{{ account_url }}" class="tab{% if request.path == account_url %} is-active{% endif %}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span>Кабінет</span>
       </a>
     </nav>
   </div>

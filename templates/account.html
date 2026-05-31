@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Кабінет · Energy Monitor{% endblock %}
+{% block page_title %}Кабінет користувача{% endblock %}
+
+{% block content %}
+<section class="card account-period" aria-label="Період звіту">
+  <div class="card-header">
+    <div>
+      <span class="card-title">Період звіту</span>
+      <div class="card-subtitle" id="period-summary">—</div>
+    </div>
+  </div>
+
+  <form id="period-form" class="period-form" novalidate>
+    <div class="period-fields">
+      <label class="field period-field">
+        <span class="field-label">З</span>
+        <input id="period-since" name="since" type="date" class="input" required>
+      </label>
+      <label class="field period-field">
+        <span class="field-label">По</span>
+        <input id="period-until" name="until" type="date" class="input" required>
+      </label>
+      <div class="period-actions">
+        <button type="submit" class="btn btn-primary" id="btn-apply-period">Оновити</button>
+      </div>
+    </div>
+
+    <div class="period-presets-wrap">
+      <span class="period-presets-label">Швидкий вибір</span>
+      <div class="period-presets" role="group" aria-label="Швидкі періоди">
+        <button type="button" class="chip" data-preset="7">7 днів</button>
+        <button type="button" class="chip is-active" data-preset="30">30 днів</button>
+        <button type="button" class="chip" data-preset="90">90 днів</button>
+        <button type="button" class="chip" data-preset="month">Цей місяць</button>
+        <button type="button" class="chip" data-preset="prev-month">Минулий місяць</button>
+        <button type="button" class="chip" data-preset="year">Рік</button>
+      </div>
+    </div>
+  </form>
+</section>
+
+<div class="totals-grid mt-5">
+  <article class="card totals-card" aria-label="Споживання за період">
+    <div class="totals-label">Спожито за період</div>
+    <div class="totals-value">
+      <span id="totals-period-kwh">—</span><span class="unit"> кВт·год</span>
+    </div>
+    <div class="totals-sub">
+      ≈ <strong id="totals-period-uah">—</strong> грн
+    </div>
+  </article>
+
+  <article class="card totals-card" aria-label="Споживання за весь час">
+    <div class="totals-label">Спожито за весь час</div>
+    <div class="totals-value">
+      <span id="totals-lifetime-kwh">—</span><span class="unit"> кВт·год</span>
+    </div>
+    <div class="totals-sub">
+      ≈ <strong id="totals-lifetime-uah">—</strong> грн
+    </div>
+  </article>
+
+  <article class="card tariff-card" aria-label="Тариф">
+    <div class="card-header">
+      <span class="card-title">Тариф</span>
+    </div>
+    <form id="tariff-form" class="tariff-form" novalidate>
+      <label class="field">
+        <span class="field-label">Вартість 1 кВт·год</span>
+        <div class="input-suffix">
+          <input
+            id="tariff-input"
+            name="tariff_uah_per_kwh"
+            type="number"
+            min="0"
+            step="0.01"
+            class="input"
+            required
+          >
+          <span class="suffix">грн</span>
+        </div>
+        <div class="field-hint">
+          Дефолт — 4,32 грн/кВт·год. Зміна тарифу автоматично перераховує всі суми.
+        </div>
+      </label>
+      <div class="tariff-actions">
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-tariff-reset">Скинути</button>
+        <button type="submit" class="btn btn-primary btn-sm" id="btn-tariff-save">Зберегти</button>
+      </div>
+    </form>
+  </article>
+</div>
+
+<section class="card mt-5" aria-label="Споживання по приладах">
+  <div class="card-header">
+    <div>
+      <span class="card-title">Споживання по приладах</span>
+      <div class="card-subtitle">Період × тариф · сумарне споживання за весь час</div>
+    </div>
+  </div>
+
+  <div class="account-table-wrap">
+    <table class="account-table account-table-grouped">
+      <thead>
+        <tr>
+          <th class="col-device"><span class="col-group">Прилад</span></th>
+          <th class="col-metric">
+            <span class="col-group">За період</span>
+            <span class="col-sub">кВт·год · грн</span>
+          </th>
+          <th class="col-metric col-lifetime">
+            <span class="col-group">За весь час</span>
+            <span class="col-sub">кВт·год · грн</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody id="account-rows">
+        <tr><td colspan="3" class="empty-text">завантаження…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="account-cards" id="account-cards"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/account.js' %}" defer></script>
+{% endblock %}

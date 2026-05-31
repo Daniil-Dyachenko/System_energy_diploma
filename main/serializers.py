@@ -94,6 +94,7 @@ class SystemSettingsSerializer(serializers.ModelSerializer):
             'is_active',
             'restore_mode',
             'restore_cooldown_seconds',
+            'tariff_uah_per_kwh',
             'updated_at',
         )
         read_only_fields = ('updated_at',)
@@ -175,3 +176,37 @@ class BalancingEventSerializer(serializers.ModelSerializer):
             'occurred_at',
         )
         read_only_fields = fields
+
+
+class DeviceConsumptionSerializer(serializers.Serializer):
+    """One row of the Cabinet table: a device's period + lifetime totals."""
+
+    id = serializers.IntegerField(source='device.id')
+    name = serializers.CharField(source='device.name')
+    device_id = serializers.CharField(source='device.device_id')
+    priority = serializers.IntegerField(source='device.priority')
+    is_on = serializers.BooleanField(source='device.is_on')
+    last_power_watts = serializers.FloatField(source='device.last_power_watts')
+    period_kwh = serializers.FloatField()
+    lifetime_kwh = serializers.FloatField()
+    period_uah = serializers.FloatField()
+    lifetime_uah = serializers.FloatField()
+
+
+class ConsumptionSummarySerializer(serializers.Serializer):
+    """Full Cabinet payload: window + tariff + totals + per-device rows."""
+
+    period = serializers.SerializerMethodField()
+    tariff_uah_per_kwh = serializers.DecimalField(max_digits=8, decimal_places=2)
+    period_kwh = serializers.FloatField()
+    lifetime_kwh = serializers.FloatField()
+    period_uah = serializers.FloatField()
+    lifetime_uah = serializers.FloatField()
+    devices = DeviceConsumptionSerializer(many=True)
+
+    def get_period(self, obj):
+        return {
+            'since': obj.since.date().isoformat(),
+            'until': obj.until.date().isoformat(),
+            'days': obj.days,
+        }

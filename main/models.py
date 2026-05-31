@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
@@ -118,6 +120,15 @@ class SystemSettings(models.Model):
         help_text=(
             'In AUTO mode, the minimum number of seconds between when a device '
             'was shed and when it may be restored automatically.'
+        ),
+    )
+    tariff_uah_per_kwh = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        default=Decimal('4.32'),
+        validators=[MinValueValidator(Decimal('0.00'))],
+        help_text=(
+            'Cost of one kilowatt-hour in UAH'
         ),
     )
     updated_at = models.DateTimeField(auto_now=True)

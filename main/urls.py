@@ -17,6 +17,7 @@ urlpatterns = [
     path('settings/', views.SystemSettingsView.as_view(), name='system-settings'),
     path('current-load/', views.CurrentLoadView.as_view(), name='current-load'),
     path('balancing-events/', views.BalancingEventsView.as_view(), name='balancing-events'),
+    path('account/summary/', views.AccountSummaryView.as_view(), name='account-summary'),
 
     # CRUD
     path('', include(router.urls)),

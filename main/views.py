@@ -13,11 +13,13 @@ from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .analytics import compute_consumption_summary, resolve_period
 from .models import BalancingEvent, Device, DeviceEvent, SystemSettings, Telemetry
 from .permissions import HasDeviceApiKey
 from .serializers import (
     BalancingEventSerializer,
     ChartDataPointSerializer,
+    ConsumptionSummarySerializer,
     CurrentLoadSerializer,
     DeviceHistorySerializer,
     DeviceSerializer,
@@ -163,6 +165,24 @@ class CurrentLoadView(APIView):
         }
         return Response(CurrentLoadSerializer(payload).data)
 
+
+
+class AccountSummaryView(APIView):
+    """GET /api/account/summary/ — Cabinet page totals."""
+
+    permission_classes = [AllowAny]  # tightened in stage 5
+
+    def get(self, request):
+        try:
+            since, until = resolve_period(
+                request.query_params.get('since'),
+                request.query_params.get('until'),
+            )
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        summary = compute_consumption_summary(since, until)
+        return Response(ConsumptionSummarySerializer(summary).data)
 
 
 class BalancingEventsView(APIView):

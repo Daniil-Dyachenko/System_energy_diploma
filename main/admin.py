@@ -91,6 +91,7 @@ class SystemSettingsAdmin(admin.ModelAdmin):
         'is_active',
         'restore_mode',
         'restore_cooldown_seconds',
+        'tariff_uah_per_kwh',
         'updated_at',
     )
     readonly_fields = ('updated_at',)

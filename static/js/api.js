@@ -104,9 +104,12 @@
   }
 
   function dismiss(toast) {
-    if (!toast.isConnected) return;
+    if (!toast.isConnected || toast.dataset.leaving) return;
+    toast.dataset.leaving = '1';
     toast.classList.add('is-leaving');
-    toast.addEventListener('animationend', () => toast.remove(), { once: true });
+    const remove = () => toast.remove();
+    toast.addEventListener('animationend', remove, { once: true });
+    setTimeout(remove, 1000);
   }
   window.showToast = showToast;
 
@@ -136,4 +139,54 @@
   }
   window.fmtWatts = fmtWatts;
   window.fmtAgo = fmtAgo;
+
+  // System status pill
+  let statusPillTimer = null;
+  let statusPillStarted = false;
+
+  function setSystemStatus(state, text) {
+    const pill = document.getElementById('global-status');
+    if (!pill) return;
+    pill.dataset.status = state;
+    const textEl = pill.querySelector('.status-text');
+    if (textEl) textEl.textContent = text;
+  }
+
+  function applySystemStatus(data) {
+    const total = data.total_power_watts || 0;
+    const limit = data.power_limit_watts || 0;
+    if (!data.is_active) {
+      setSystemStatus('paused', `Алгоритм на паузі · ${fmtWatts(total)} / ${fmtWatts(limit)}`);
+    } else if (data.is_overloaded) {
+      setSystemStatus('overload', `Перевантаження · ${fmtWatts(total)} / ${fmtWatts(limit)}`);
+    } else {
+      setSystemStatus('ok', `OK · ${fmtWatts(total)} / ${fmtWatts(limit)}`);
+    }
+  }
+
+  /**
+   * Keep the global topbar status pill live by polling /api/current-load/.
+   */
+  function initSystemStatusPill(intervalMs = 5000) {
+    if (statusPillStarted) return;
+    statusPillStarted = true;
+
+    async function poll() {
+      try {
+        const data = await apiFetch('/api/current-load/', { toastOnError: false });
+        applySystemStatus(data);
+      } catch (_) {
+        setSystemStatus('error', "Зв'язок з сервером втрачено");
+      }
+    }
+    function start() { poll(); statusPillTimer = setInterval(poll, intervalMs); }
+    function stop() { clearInterval(statusPillTimer); statusPillTimer = null; }
+
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) stop();
+      else if (!statusPillTimer) start();
+    });
+    start();
+  }
+  window.initSystemStatusPill = initSystemStatusPill;
 })();

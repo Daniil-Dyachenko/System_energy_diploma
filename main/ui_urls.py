@@ -10,6 +10,7 @@ urlpatterns = [
     path('devices/', ui_views.DevicesView.as_view(), name='devices-page'),
     path('devices/<int:pk>/', ui_views.DeviceDetailView.as_view(), name='device-detail-page'),
     path('settings/', ui_views.SettingsView.as_view(), name='settings-page'),
+    path('account/', ui_views.AccountView.as_view(), name='account-page'),
 
     path(
         'login/',

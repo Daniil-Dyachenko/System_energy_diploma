@@ -38,3 +38,9 @@ class DeviceDetailView(LoginRequiredMixin, TemplateView):
 
 class SettingsView(LoginRequiredMixin, TemplateView):
     template_name = 'settings.html'
+
+
+class AccountView(LoginRequiredMixin, TemplateView):
+    """Cabinet page: per-period and lifetime consumption + tariff editor."""
+
+    template_name = 'account.html'

@@ -120,4 +120,7 @@
   } else {
     load();
   }
+
+  // Keep the global topbar status pill live
+  initSystemStatusPill();
 })();
