@@ -14,6 +14,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .analytics import compute_consumption_summary, resolve_period
+from .forecasting import compute_forecast, resolve_forecast_params
 from .models import BalancingEvent, Device, DeviceEvent, SystemSettings, Telemetry
 from .permissions import HasDeviceApiKey
 from .serializers import (
@@ -24,6 +25,7 @@ from .serializers import (
     DeviceHistorySerializer,
     DeviceSerializer,
     DeviceStateSerializer,
+    ForecastSerializer,
     SystemSettingsSerializer,
     TelemetryIngestSerializer,
     TelemetryReadSerializer,
@@ -184,6 +186,20 @@ class AccountSummaryView(APIView):
         summary = compute_consumption_summary(since, until)
         return Response(ConsumptionSummarySerializer(summary).data)
 
+
+class ForecastView(APIView):
+    """GET /api/forecast/ - short-term forecast of total system consumption."""
+
+    permission_classes = [AllowAny]  # tightened in stage 5
+
+    def get(self, request):
+        try:
+            params = resolve_forecast_params(request.query_params)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        result = compute_forecast(**params)
+        return Response(ForecastSerializer(result).data)
 
 class BalancingEventsView(APIView):
     """GET /api/balancing-events/?limit=N — most recent shed/restore actions."""

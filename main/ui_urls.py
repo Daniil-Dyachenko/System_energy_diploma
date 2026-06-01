@@ -11,6 +11,7 @@ urlpatterns = [
     path('devices/<int:pk>/', ui_views.DeviceDetailView.as_view(), name='device-detail-page'),
     path('settings/', ui_views.SettingsView.as_view(), name='settings-page'),
     path('account/', ui_views.AccountView.as_view(), name='account-page'),
+    path('forecast/', ui_views.ForecastView.as_view(), name='forecast-page'),
 
     path(
         'login/',

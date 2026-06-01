@@ -28,11 +28,16 @@
       <nav class="primary-nav">
         {% url 'dashboard' as dashboard_url %}
         {% url 'devices-page' as devices_url %}
+        {% url 'forecast-page' as forecast_url %}
         {% url 'settings-page' as settings_url %}
         {% url 'account-page' as account_url %}
         <a href="{{ dashboard_url }}" class="nav-item{% if request.path == dashboard_url %} is-active{% endif %}">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
           <span>Дашборд</span>
+        </a>
+        <a href="{{ forecast_url }}" class="nav-item{% if request.path == forecast_url %} is-active{% endif %}">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="15 7 21 7 21 13"/></svg>
+          <span>Прогноз</span>
         </a>
         <a href="{{ devices_url }}" class="nav-item{% if request.path == devices_url %} is-active{% endif %}">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2v6"/><path d="M15 2v6"/><path d="M5 8h14v4a7 7 0 0 1-14 0z"/><path d="M12 19v3"/></svg>
@@ -100,6 +105,10 @@
       <a href="{{ dashboard_url }}" class="tab{% if request.path == dashboard_url %} is-active{% endif %}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
         <span>Дашборд</span>
+      </a>
+      <a href="{{ forecast_url }}" class="tab{% if request.path == forecast_url %} is-active{% endif %}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="15 7 21 7 21 13"/></svg>
+        <span>Прогноз</span>
       </a>
       <a href="{{ devices_url }}" class="tab{% if request.path == devices_url %} is-active{% endif %}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2v6"/><path d="M15 2v6"/><path d="M5 8h14v4a7 7 0 0 1-14 0z"/><path d="M12 19v3"/></svg>

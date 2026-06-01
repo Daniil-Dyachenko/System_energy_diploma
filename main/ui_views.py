@@ -44,3 +44,9 @@ class AccountView(LoginRequiredMixin, TemplateView):
     """Cabinet page: per-period and lifetime consumption + tariff editor."""
 
     template_name = 'account.html'
+
+
+class ForecastView(LoginRequiredMixin, TemplateView):
+    """Forecast page: projected system consumption with three transparent methods."""
+
+    template_name = 'forecast.html'

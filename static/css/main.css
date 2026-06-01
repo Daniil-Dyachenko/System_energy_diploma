@@ -1712,3 +1712,81 @@ device-name-link {
     border-top: 1px solid var(--color-border);
   }
 }
+
+/* 15. FORECAST PAGE  */
+.forecast-head .card-header { flex-wrap: wrap; gap: var(--space-3); }
+
+.forecast-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-warning-soft);
+  border: 1px solid var(--color-warning);
+  color: var(--color-warning);
+  font-size: 14px;
+  font-weight: 500;
+}
+.forecast-banner svg { width: 20px; height: 20px; flex-shrink: 0; }
+
+.chart-card .chart-wrap-tall { height: 360px; }
+
+.method-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  position: relative;
+}
+.method-card.is-recommended {
+  border-color: var(--color-success);
+  box-shadow: 0 0 0 1px var(--color-success);
+}
+.method-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.method-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.method-name { font-weight: 600; font-size: 14px; }
+.method-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.method-value .unit { font-size: 14px; color: var(--color-text-muted); font-weight: 500; }
+.method-sub { font-size: 14px; color: var(--color-text-muted); }
+.method-sub strong { color: var(--color-text); font-family: var(--font-mono); }
+.method-acc { font-size: 13px; color: var(--color-text-subtle); }
+.method-acc-na { font-style: italic; }
+.method-flags:empty { display: none; }
+
+.forecast-explainer-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.forecast-explainer-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+.forecast-explainer-item .method-swatch { margin-top: 5px; }
+.forecast-explainer-item strong { color: var(--color-text); }
+
+@media (max-width: 1023px) {
+  .chart-card .chart-wrap-tall { height: 280px; }
+}

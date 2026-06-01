@@ -210,3 +210,39 @@ class ConsumptionSummarySerializer(serializers.Serializer):
             'until': obj.until.date().isoformat(),
             'days': obj.days,
         }
+
+
+class ForecastPointSerializer(serializers.Serializer):
+    """One hourly bucket of a history or forecast series."""
+
+    timestamp = serializers.DateTimeField()
+    power_watts = serializers.FloatField()
+
+
+class ForecastMethodSerializer(serializers.Serializer):
+    """One forecasting method: its projected curve + backtest accuracy."""
+
+    key = serializers.CharField()
+    label = serializers.CharField()
+    description = serializers.CharField()
+    points = ForecastPointSerializer(many=True)
+    energy_kwh = serializers.FloatField()
+    energy_uah = serializers.FloatField()
+    predicted_peak_watts = serializers.FloatField()
+    predicted_overload = serializers.BooleanField()
+    mae_watts = serializers.FloatField(allow_null=True)
+    mape_percent = serializers.FloatField(allow_null=True)
+
+
+class ForecastSerializer(serializers.Serializer):
+    """Full forecast payload: history baseline + every method + the limit/tariff."""
+
+    generated_at = serializers.DateTimeField()
+    horizon_hours = serializers.IntegerField()
+    history_days = serializers.IntegerField()
+    granularity = serializers.CharField()
+    power_limit_watts = serializers.IntegerField()
+    tariff_uah_per_kwh = serializers.DecimalField(max_digits=8, decimal_places=2)
+    recommended_method = serializers.CharField(allow_null=True)
+    history = ForecastPointSerializer(many=True)
+    methods = ForecastMethodSerializer(many=True)

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Прогноз · Energy Monitor{% endblock %}
+{% block page_title %}Прогноз споживання{% endblock %}
+
+{% block content %}
+<div class="forecast" id="forecast-root">
+
+  <section class="card forecast-head" aria-label="Параметри прогнозу">
+    <div class="card-header">
+      <div>
+        <span class="card-title">Прогноз сумарного споживання</span>
+        <div class="card-subtitle" id="forecast-subtitle">завантаження…</div>
+      </div>
+      <div class="chart-toolbar" id="horizon-toolbar" role="tablist" aria-label="Горизонт прогнозу">
+        <button type="button" class="chart-range" data-hours="6" role="tab">6 год</button>
+        <button type="button" class="chart-range is-active" data-hours="24" role="tab" aria-selected="true">24 год</button>
+        <button type="button" class="chart-range" data-hours="48" role="tab">48 год</button>
+        <button type="button" class="chart-range" data-hours="72" role="tab">72 год</button>
+      </div>
+    </div>
+
+    <div class="forecast-banner hidden" id="overload-banner" role="alert">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span id="overload-text"></span>
+    </div>
+  </section>
+
+  <section class="card chart-card mt-5" aria-label="Графік історії та прогнозу">
+    <div class="card-header">
+      <span class="card-title">Історія та прогноз</span>
+      <div class="card-subtitle">суцільна лінія — факт, пунктир — прогноз</div>
+    </div>
+    <div class="chart-wrap chart-wrap-tall">
+      <canvas id="forecast-chart" aria-label="Лінійний графік фактичного та прогнозованого споживання"></canvas>
+      <div class="empty-text hidden" id="chart-empty">Недостатньо телеметрії для прогнозу. Дочекайтесь даних від приладів.</div>
+    </div>
+  </section>
+
+  <div class="section-title mt-5">
+    <h2>Методи прогнозування</h2>
+  </div>
+  <div class="totals-grid" id="method-cards">
+    <div class="empty-text">завантаження…</div>
+  </div>
+
+  <section class="card mt-5 forecast-explainer" aria-label="Як працює прогноз">
+    <div class="card-header">
+      <span class="card-title">Як це працює</span>
+    </div>
+    <ul class="forecast-explainer-list" id="method-explainer"></ul>
+    <p class="field-hint mt-3">
+      Усі методи працюють із годинними агрегатами сумарної потужності.Точність кожного методу оцінюється
+      зворотним тестом: останній відрізок історії приховується, прогнозується
+      й порівнюється з реальними даними (MAE — середня похибка у Вт, MAPE —
+      у відсотках). Метод із найменшою похибкою позначається як рекомендований.
+    </p>
+  </section>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
+<script src="{% static 'js/forecast.js' %}" defer></script>
+{% endblock %}
