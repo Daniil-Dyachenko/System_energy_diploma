@@ -10,6 +10,11 @@ from django.utils.dateparse import parse_datetime
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from .forecasting import (
+    hourly_profile_forecast,
+    linear_trend_forecast,
+    moving_average_forecast,
+)
 from .models import BalancingEvent, Device, DeviceEvent, SystemSettings, Telemetry
 from .services import rebalance_load
 
@@ -951,3 +956,141 @@ class AccountSummaryEndpointTests(TestCase):
         self.assertEqual(body['lifetime_kwh'], 0.0)
         self.assertEqual(body['period_uah'], 0.0)
         self.assertEqual(body['devices'], [])
+
+
+class ForecastAlgorithmTests(TestCase):
+    """The three pure prediction functions in isolation."""
+
+    def test_moving_average_holds_trailing_mean(self):
+        out = moving_average_forecast([100, 200, 300, 400], horizon=3, window=2)
+        self.assertEqual(out, [350.0, 350.0, 350.0])
+
+    def test_moving_average_clamps_window_to_history(self):
+        out = moving_average_forecast([100, 200], horizon=1, window=10)
+        self.assertEqual(out, [150.0])
+
+    def test_moving_average_empty_history_is_zero(self):
+        self.assertEqual(moving_average_forecast([], horizon=3, window=6), [0.0, 0.0, 0.0])
+
+    def test_linear_trend_extrapolates_a_clean_line(self):
+        out = linear_trend_forecast([10, 20, 30, 40, 50], horizon=3)
+        self.assertEqual(out, [60.0, 70.0, 80.0])
+
+    def test_linear_trend_clamps_negative_projection(self):
+        out = linear_trend_forecast([100, 50, 0], horizon=2)
+        self.assertEqual(out, [0.0, 0.0])
+
+    def test_linear_trend_single_point_is_flat(self):
+        self.assertEqual(linear_trend_forecast([500], horizon=2), [500.0, 500.0])
+
+    def test_hourly_profile_maps_hour_of_day(self):
+        """Each future hour gets the historical average for that hour-of-day."""
+        def at(days_ago, hour):
+            base = timezone.localtime(timezone.now()).replace(
+                hour=hour, minute=0, second=0, microsecond=0,
+            )
+            return base - timedelta(days=days_ago)
+
+        history = [
+            (at(2, 8), 100.0),
+            (at(1, 8), 200.0),
+            (at(1, 20), 900.0),
+        ]
+        future = [at(-1, 8), at(-1, 20)]
+        out = hourly_profile_forecast(history, future)
+        self.assertEqual(out, [150.0, 900.0])
+
+    def test_hourly_profile_empty_history_is_zero(self):
+        future = [timezone.now() + timedelta(hours=1)]
+        self.assertEqual(hourly_profile_forecast([], future), [0.0])
+
+
+class ForecastEndpointTests(TestCase):
+    """GET /api/forecast/ shape + parameter handling."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.url = reverse('forecast')
+        self.device = Device.objects.create(
+            name='Boiler', device_id='boiler', priority=3,
+            is_on=True, last_power_watts=500,
+        )
+
+    def _seed(self, *, count, watts, is_on=True):
+        for _ in range(count):
+            Telemetry.objects.create(device=self.device, power_watts=watts, is_on=is_on)
+
+    def test_payload_shape(self):
+        self._seed(count=5, watts=500)
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        body = resp.json()
+        for key in (
+            'generated_at', 'horizon_hours', 'history_days', 'granularity',
+            'power_limit_watts', 'tariff_uah_per_kwh', 'recommended_method',
+            'history', 'methods',
+        ):
+            self.assertIn(key, body)
+        self.assertEqual(len(body['methods']), 3)
+        keys = {m['key'] for m in body['methods']}
+        self.assertEqual(keys, {'moving_average', 'linear_trend', 'hourly_profile'})
+        for m in body['methods']:
+            for key in (
+                'key', 'label', 'description', 'points', 'energy_kwh',
+                'energy_uah', 'predicted_peak_watts', 'predicted_overload',
+                'mae_watts', 'mape_percent',
+            ):
+                self.assertIn(key, m)
+
+    def test_default_horizon_is_24h(self):
+        self._seed(count=3, watts=500)
+        body = self.client.get(self.url).json()
+        self.assertEqual(body['horizon_hours'], 24)
+        for m in body['methods']:
+            self.assertEqual(len(m['points']), 24)
+
+    def test_custom_horizon_controls_point_count(self):
+        self._seed(count=3, watts=500)
+        body = self.client.get(self.url, {'hours': 6}).json()
+        self.assertEqual(body['horizon_hours'], 6)
+        for m in body['methods']:
+            self.assertEqual(len(m['points']), 6)
+
+    def test_bad_horizon_returns_400(self):
+        for bad in ('0', 'abc', '999'):
+            resp = self.client.get(self.url, {'hours': bad})
+            self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST, bad)
+            self.assertIn('detail', resp.json())
+
+    def test_bad_history_days_returns_400(self):
+        resp = self.client.get(self.url, {'history_days': '999'})
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_history_excludes_shed_samples(self):
+        """Only is_on=True telemetry feeds the model — same filter as the chart."""
+        self._seed(count=5, watts=1500, is_on=False)
+        body = self.client.get(self.url).json()
+        self.assertEqual(body['history'], [])
+        self.assertIsNone(body['recommended_method'])
+
+    def test_empty_database_returns_valid_payload(self):
+        Telemetry.objects.all().delete()
+        Device.objects.all().delete()
+        body = self.client.get(self.url).json()
+        self.assertEqual(body['history'], [])
+        self.assertIsNone(body['recommended_method'])
+        self.assertEqual(len(body['methods']), 3)
+        for m in body['methods']:
+            self.assertEqual(len(m['points']), 24)
+            self.assertEqual(m['energy_kwh'], 0.0)
+
+    def test_predicted_overload_flag(self):
+        """A load well above a low limit must raise predicted_overload."""
+        SystemSettings.objects.update_or_create(
+            pk=1, defaults={'power_limit_watts': 50},
+        )
+        self._seed(count=5, watts=500)
+        body = self.client.get(self.url).json()
+        ma = next(m for m in body['methods'] if m['key'] == 'moving_average')
+        self.assertTrue(ma['predicted_overload'])
+        self.assertGreater(ma['predicted_peak_watts'], 50)
