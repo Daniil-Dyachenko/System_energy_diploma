@@ -21,6 +21,7 @@
 
   const rowsEl = document.getElementById('account-rows');
   const cardsEl = document.getElementById('account-cards');
+  const btnExportCsv = document.getElementById('btn-export-csv');
 
   let lastSummary = null;
 
@@ -205,6 +206,8 @@
       showToast('Дата "З" не може бути пізнішою за "По"', 'error');
       return;
     }
+    btnExportCsv.href =
+      `/api/account/export/?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`;
     try {
       const data = await apiFetch(
         `/api/account/summary/?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`,

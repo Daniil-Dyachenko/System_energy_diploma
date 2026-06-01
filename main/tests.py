@@ -958,6 +958,65 @@ class AccountSummaryEndpointTests(TestCase):
         self.assertEqual(body['devices'], [])
 
 
+class AccountExportEndpointTests(TestCase):
+    """GET /api/account/export/ returns a CSV of consumption."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.url = reverse('account-export')
+        self.fridge = Device.objects.create(
+            name='Fridge', device_id='fridge', priority=1,
+            is_on=True, last_power_watts=300,
+        )
+        self.boiler = Device.objects.create(
+            name='Boiler', device_id='boiler', priority=3,
+            is_on=False, last_power_watts=1500,
+        )
+
+    def _rows(self, resp):
+        text = resp.content.decode('windows-1251')
+        return list(csv.reader(io.StringIO(text), delimiter=';'))
+
+    def test_returns_csv_attachment(self):
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertIn('text/csv', resp['Content-Type'])
+        self.assertIn('attachment', resp['Content-Disposition'])
+        self.assertIn('.csv', resp['Content-Disposition'])
+
+    def test_body_is_windows1251(self):
+        resp = self.client.get(self.url)
+        self.assertFalse(resp.content.startswith(b'\xef\xbb\xbf'))
+        self.assertIn('charset=windows-1251', resp['Content-Type'])
+        self.assertIn('Прилад', resp.content.decode('windows-1251'))
+
+    def test_header_row_per_device_and_totals(self):
+        rows = self._rows(self.client.get(self.url))
+        self.assertEqual(rows[0][0], 'Прилад')
+        self.assertIn('кВт·год (період)', rows[0])
+        names = [r[0] for r in rows if r]
+        self.assertIn('Fridge', names)
+        self.assertIn('Boiler', names)
+        self.assertIn('Всього', names)
+
+    def test_status_column_reflects_is_on(self):
+        by_name = {r[0]: r for r in self._rows(self.client.get(self.url)) if r}
+        self.assertEqual(by_name['Fridge'][3], 'Увімкнено')
+        self.assertEqual(by_name['Boiler'][3], 'Вимкнено')
+
+    def test_decimals_use_comma_separator(self):
+        Telemetry.objects.create(device=self.fridge, power_watts=600, is_on=True)
+        by_name = {r[0]: r for r in self._rows(self.client.get(self.url)) if r}
+        kwh_cell = by_name['Fridge'][4]
+        self.assertIn(',', kwh_cell)
+        self.assertNotIn('.', kwh_cell)
+
+    def test_bad_date_returns_400(self):
+        resp = self.client.get(self.url, {'since': 'not-a-date'})
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('detail', resp.json())
+
+
 class ForecastAlgorithmTests(TestCase):
     """The three pure prediction functions in isolation."""
 

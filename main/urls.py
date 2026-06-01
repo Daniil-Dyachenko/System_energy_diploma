@@ -18,6 +18,7 @@ urlpatterns = [
     path('current-load/', views.CurrentLoadView.as_view(), name='current-load'),
     path('balancing-events/', views.BalancingEventsView.as_view(), name='balancing-events'),
     path('account/summary/', views.AccountSummaryView.as_view(), name='account-summary'),
+    path('account/export/', views.AccountExportView.as_view(), name='account-export'),
     path('forecast/', views.ForecastView.as_view(), name='forecast'),
 
     # CRUD

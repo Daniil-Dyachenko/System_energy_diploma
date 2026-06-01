@@ -187,6 +187,72 @@ class AccountSummaryView(APIView):
         return Response(ConsumptionSummarySerializer(summary).data)
 
 
+class AccountExportView(APIView):
+    """GET /api/account/export/ — Cabinet consumption as a downloadable CSV."""
+
+    permission_classes = [AllowAny]  # tightened in stage 5
+
+    _KWH_DP = 4
+    _UAH_DP = 2
+
+    def get(self, request):
+        try:
+            since, until = resolve_period(
+                request.query_params.get('since'),
+                request.query_params.get('until'),
+            )
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        summary = compute_consumption_summary(since, until)
+
+        filename = (
+            f'consumption_{since.date().isoformat()}_{until.date().isoformat()}.csv'
+        )
+
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';')
+        writer.writerow([
+            'Прилад', 'ID приладу', 'Пріоритет', 'Статус',
+            'кВт·год (період)', 'грн (період)',
+            'кВт·год (весь час)', 'грн (весь час)',
+        ])
+        for row in summary.devices:
+            writer.writerow([
+                row.device.name,
+                row.device.device_id,
+                row.device.priority,
+                'Увімкнено' if row.device.is_on else 'Вимкнено',
+                self._num(row.period_kwh, self._KWH_DP),
+                self._num(row.period_uah, self._UAH_DP),
+                self._num(row.lifetime_kwh, self._KWH_DP),
+                self._num(row.lifetime_uah, self._UAH_DP),
+            ])
+        writer.writerow([
+            'Всього', '', '', '',
+            self._num(summary.period_kwh, self._KWH_DP),
+            self._num(summary.period_uah, self._UAH_DP),
+            self._num(summary.lifetime_kwh, self._KWH_DP),
+            self._num(summary.lifetime_uah, self._UAH_DP),
+        ])
+        writer.writerow([])
+        writer.writerow([f'Період: {since.date().isoformat()} — {until.date().isoformat()}'])
+        writer.writerow([
+            f'Тариф, грн/кВт·год: {self._num(float(summary.tariff_uah_per_kwh), self._UAH_DP)}',
+        ])
+
+        body = buffer.getvalue().encode('windows-1251', errors='replace')
+        response = HttpResponse(body, content_type='text/csv; charset=windows-1251')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+    @staticmethod
+    def _num(value, places: int) -> str:
+        """Format a number with ``places`` decimals and a comma separator (uk)."""
+        return f'{(value or 0):.{places}f}'.replace('.', ',')
+
+
+
 class ForecastView(APIView):
     """GET /api/forecast/ - short-term forecast of total system consumption."""
 
