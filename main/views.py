@@ -1,11 +1,14 @@
 """DRF views exposing the REST API for ESP32 devices and the web client."""
 from __future__ import annotations
 
+import csv
+import io
 from collections import defaultdict
 from datetime import timedelta
 
 from django.db.models import Avg, Max, Min
 from django.db.models.functions import TruncHour, TruncMinute
+from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
