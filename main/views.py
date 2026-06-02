@@ -13,6 +13,7 @@ from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from .analytics import compute_consumption_summary, resolve_period
@@ -41,6 +42,8 @@ class TelemetryIngestView(APIView):
     """POST /api/telemetry/ — ESP32 reports a power-draw sample."""
 
     permission_classes = [HasDeviceApiKey]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'telemetry'
 
     def post(self, request):
         serializer = TelemetryIngestSerializer(data=request.data)
@@ -70,6 +73,8 @@ class DeviceStateView(APIView):
     """GET /api/device-state/?device_id=… — ESP32 polls one relay's state."""
 
     permission_classes = [HasDeviceApiKey]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'device_state'
 
     def get(self, request):
 
@@ -77,7 +82,7 @@ class DeviceStateView(APIView):
         return Response(DeviceStateSerializer(device).data)
 
 
-# Web-client endpoints (currently open for development; auth comes in stage 5)
+# Web-client endpoints
 
 class ChartDataView(APIView):
     """GET /api/chart-data/ — total system load aggregated by minute."""

@@ -3,6 +3,7 @@ Django settings for Energy Monitoring System project.
 """
 
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -11,6 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(BASE_DIR / '.env')
 
+TESTING = 'test' in sys.argv
 
 def env_bool(name: str, default: bool = False) -> bool:
     return os.getenv(name, str(default)).lower() in ('1', 'true', 'yes', 'on')
@@ -144,6 +146,16 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': None if TESTING else '30/min',
+        'user': None if TESTING else '300/min',
+        'telemetry': None if TESTING else '120/min',
+        'device_state': None if TESTING else '180/min',
+    },
     'DATETIME_FORMAT': '%Y-%m-%dT%H:%M:%S%z',
     'UNAUTHENTICATED_USER': None,
 }

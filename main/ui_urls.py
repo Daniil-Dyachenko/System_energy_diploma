@@ -15,7 +15,7 @@ urlpatterns = [
 
     path(
         'login/',
-        auth_views.LoginView.as_view(
+        ui_views.ThrottledLoginView.as_view(
             template_name='registration/login.html',
             redirect_authenticated_user=True,
         ),

@@ -4,14 +4,17 @@ from __future__ import annotations
 import csv
 import io
 from datetime import timedelta
+from unittest import mock
 
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import status
 from rest_framework.test import APIClient
+from rest_framework.throttling import SimpleRateThrottle
 
 from .forecasting import (
     hourly_profile_forecast,
@@ -20,7 +23,7 @@ from .forecasting import (
 )
 from .models import BalancingEvent, Device, DeviceEvent, SystemSettings, Telemetry
 from .services import rebalance_load
-
+from .ui_views import ThrottledLoginView
 
 def authed_client():
     """An APIClient authenticated as a throwaway user."""
@@ -1236,3 +1239,62 @@ class EndpointAuthTests(TestCase):
     def test_esp32_endpoint_still_guarded_by_api_key(self):
         resp = self.anon.get(reverse('device-state'))
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class ApiThrottleTests(TestCase):
+    """DRF caps a flood on the ESP32 telemetry endpoint."""
+
+    def setUp(self):
+        cache.clear()
+        self.device = Device.objects.create(
+            name='Boiler', device_id='b', api_key='k', is_on=True,
+        )
+        self.url = reverse('telemetry-ingest')
+
+    def test_telemetry_returns_429_after_limit(self):
+        rates = {'anon': '30/min', 'user': '300/min', 'telemetry': '3/min', 'device_state': '180/min'}
+        with mock.patch.object(SimpleRateThrottle, 'THROTTLE_RATES', rates):
+            client = APIClient()
+            codes = [
+                client.post(
+                    self.url, {'device_id': 'b', 'power_watts': 100},
+                    format='json', HTTP_X_API_KEY='k',
+                ).status_code
+                for _ in range(5)
+            ]
+        self.assertEqual(codes[:3], [201, 201, 201], codes)
+        self.assertEqual(codes[3], status.HTTP_429_TOO_MANY_REQUESTS, codes)
+
+
+class LoginThrottleTests(TestCase):
+    """The login form locks an IP out after repeated failures."""
+
+    PASSWORD = 'correct-horse-battery'
+
+    def setUp(self):
+        cache.clear()
+        User.objects.create_user('operator', password=self.PASSWORD)
+        self.url = reverse('login')
+
+    def test_lockout_after_repeated_failures(self):
+        for _ in range(ThrottledLoginView.MAX_ATTEMPTS):
+            resp = self.client.post(
+                self.url, {'username': 'operator', 'password': 'nope'},
+            )
+            self.assertEqual(resp.status_code, 200)
+
+        resp = self.client.post(
+            self.url, {'username': 'operator', 'password': self.PASSWORD},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Забагато')
+        self.assertNotIn('_auth_user_id', self.client.session)
+
+    def test_successful_login_clears_counter(self):
+        self.client.post(self.url, {'username': 'operator', 'password': 'nope'})
+        resp = self.client.post(
+            self.url, {'username': 'operator', 'password': self.PASSWORD},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('_auth_user_id', self.client.session)
+
