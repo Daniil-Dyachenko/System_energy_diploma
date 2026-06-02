@@ -67,24 +67,14 @@ class TelemetryIngestView(APIView):
 
 
 class DeviceStateView(APIView):
-    """GET /api/device-state/ — ESP32 polls relay states."""
+    """GET /api/device-state/?device_id=… — ESP32 polls one relay's state."""
 
     permission_classes = [HasDeviceApiKey]
 
     def get(self, request):
-        device_id = request.query_params.get('device_id')
-        if device_id:
-            try:
-                device = Device.objects.get(device_id=device_id)
-            except Device.DoesNotExist:
-                return Response(
-                    {'detail': f'Device "{device_id}" not found.'},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-            return Response(DeviceStateSerializer(device).data)
 
-        devices = Device.objects.all()
-        return Response(DeviceStateSerializer(devices, many=True).data)
+        device = request.auth_device
+        return Response(DeviceStateSerializer(device).data)
 
 
 # Web-client endpoints (currently open for development; auth comes in stage 5)

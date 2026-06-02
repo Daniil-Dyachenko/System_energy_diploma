@@ -6,7 +6,7 @@ import io
 from datetime import timedelta
 
 from django.contrib.auth.models import User
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -21,8 +21,6 @@ from .forecasting import (
 from .models import BalancingEvent, Device, DeviceEvent, SystemSettings, Telemetry
 from .services import rebalance_load
 
-API_KEY = 'test-api-key'
-
 
 def authed_client():
     """An APIClient authenticated as a throwaway user."""
@@ -32,15 +30,15 @@ def authed_client():
     client.force_authenticate(user=user)
     return client
 
-@override_settings(DEVICE_API_KEY=API_KEY)
 class TelemetryIngestTests(TestCase):
-    """Covers the ESP32 uplink endpoint."""
+    """Covers the ESP32 uplink endpoint and its per-device X-API-Key auth."""
 
     def setUp(self):
         self.client = APIClient()
         self.device = Device.objects.create(
             name='Boiler',
             device_id='esp32-boiler',
+            api_key='boiler-secret-key',
             priority=3,
             is_on=True,
         )
@@ -69,7 +67,7 @@ class TelemetryIngestTests(TestCase):
             self.url,
             {'device_id': 'esp32-boiler', 'power_watts': 1500.0},
             format='json',
-            HTTP_X_API_KEY=API_KEY,
+            HTTP_X_API_KEY=self.device.api_key,
         )
         self.assertEqual(resp.status_code, status.HTTP_201_CREATED, resp.content)
         self.assertEqual(Telemetry.objects.count(), 1)
@@ -82,63 +80,90 @@ class TelemetryIngestTests(TestCase):
         self.assertIn('balancing', body)
         self.assertEqual(body['balancing']['power_limit_watts'], 3000)
 
-    def test_unknown_device_returns_400(self):
+    def test_unknown_device_rejected_with_403(self):
         resp = self.client.post(
             self.url,
             {'device_id': 'ghost', 'power_watts': 10.0},
             format='json',
-            HTTP_X_API_KEY=API_KEY,
+            HTTP_X_API_KEY=self.device.api_key,
         )
-        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(Telemetry.objects.exists())
+
+    def test_wrong_device_key_is_rejected(self):
+        fridge = Device.objects.create(
+            name='Fridge', device_id='esp32-fridge',
+            api_key='fridge-secret-key', priority=1, is_on=True,
+        )
+        resp = self.client.post(
+            self.url,
+            {'device_id': 'esp32-boiler', 'power_watts': 1500.0},
+            format='json',
+            HTTP_X_API_KEY=fridge.api_key,
+        )
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(Telemetry.objects.exists())
 
     def test_negative_power_rejected(self):
         resp = self.client.post(
             self.url,
             {'device_id': 'esp32-boiler', 'power_watts': -1.0},
             format='json',
-            HTTP_X_API_KEY=API_KEY,
+            HTTP_X_API_KEY=self.device.api_key,
         )
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
 
-@override_settings(DEVICE_API_KEY=API_KEY)
 class DeviceStateTests(TestCase):
-    """Covers the ESP32 downlink endpoint."""
+    """Covers the ESP32 downlink endpoint (per-device, device_id required)."""
 
     def setUp(self):
         self.client = APIClient()
         self.fridge = Device.objects.create(
-            name='Fridge', device_id='esp32-fridge', priority=1, is_on=True,
+            name='Fridge', device_id='esp32-fridge',
+            api_key='fridge-secret-key', priority=1, is_on=True,
         )
         self.heater = Device.objects.create(
-            name='Heater', device_id='esp32-heater', priority=8, is_on=False,
+            name='Heater', device_id='esp32-heater',
+            api_key='heater-secret-key', priority=8, is_on=False,
         )
         self.url = reverse('device-state')
 
-    def test_lookup_single_device(self):
+    def test_lookup_own_device_with_matching_key(self):
         resp = self.client.get(
             self.url,
             {'device_id': 'esp32-fridge'},
-            HTTP_X_API_KEY=API_KEY,
+            HTTP_X_API_KEY=self.fridge.api_key,
         )
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertEqual(resp.json(), {'device_id': 'esp32-fridge', 'is_on': True})
 
-    def test_lookup_unknown_device(self):
+    def test_missing_device_id_rejected(self):
+        resp = self.client.get(self.url, HTTP_X_API_KEY=self.fridge.api_key)
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_unknown_device_rejected_with_403(self):
+        resp = self.client.get(
+            self.url, {'device_id': 'ghost'}, HTTP_X_API_KEY=self.fridge.api_key,
+        )
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_wrong_device_key_is_rejected(self):
         resp = self.client.get(
             self.url,
-            {'device_id': 'ghost'},
-            HTTP_X_API_KEY=API_KEY,
+            {'device_id': 'esp32-heater'},
+            HTTP_X_API_KEY=self.fridge.api_key,
         )
-        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_list_all_devices(self):
-        resp = self.client.get(self.url, HTTP_X_API_KEY=API_KEY)
+    def test_each_device_reads_its_own_state(self):
+        resp = self.client.get(
+            self.url,
+            {'device_id': 'esp32-heater'},
+            HTTP_X_API_KEY=self.heater.api_key,
+        )
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        payload = resp.json()
-        self.assertEqual(len(payload), 2)
-        ids = {row['device_id'] for row in payload}
-        self.assertEqual(ids, {'esp32-fridge', 'esp32-heater'})
+        self.assertEqual(resp.json(), {'device_id': 'esp32-heater', 'is_on': False})
 
 
 class BalancingAlgorithmTests(TestCase):
@@ -1166,7 +1191,6 @@ class ForecastEndpointTests(TestCase):
         self.assertGreater(ma['predicted_peak_watts'], 50)
 
 
-@override_settings(DEVICE_API_KEY=API_KEY)
 class EndpointAuthTests(TestCase):
     """Stage 5: the web/API surface rejects anonymous callers."""
 

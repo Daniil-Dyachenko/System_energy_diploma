@@ -1,7 +1,7 @@
 /*
  * Energy_System_Diploma — ESP32 firmware (VS Code / PlatformIO build)
  * Uplink   : POST http://host.wokwi.internal:8000/api/telemetry/
- * Downlink : GET  http://host.wokwi.internal:8000/api/device-state/
+ * Downlink : GET  http://host.wokwi.internal:8000/api/device-state/?device_id=<id>
  */
 
 #include <Arduino.h>
@@ -14,9 +14,9 @@
 
 
 // Configuration
-// Secrets (SERVER_URL, API_KEY, WIFI_SSID, WIFI_PASSWORD) live in secrets.h,
+// Secrets (SERVER_URL, API_KEY_1..3, WIFI_SSID, WIFI_PASSWORD) live in secrets.h,
 // which is gitignored. Copy secrets.h.example to secrets.h on first checkout
-// and fill in real values. See README.md for details.
+// and fill in real values (one API key per device). See README.md for details.
 #include "secrets.h"
 
 #define UPLINK_INTERVAL_MS    5000
@@ -29,6 +29,7 @@
 
 struct DeviceMap {
   const char* device_id;
+  const char* api_key;
   const char* label;
   uint8_t     adc_pin;
   uint8_t     led_pin;
@@ -38,9 +39,9 @@ struct DeviceMap {
 };
 
 DeviceMap devices[] = {
-  { "1", "Fridge", 32, 25, 1500.0f, true, 0.0f },
-  { "2", "Boiler", 33, 26, 2500.0f, true, 0.0f },
-  { "3", "Iron",   34, 27, 2000.0f, true, 0.0f }
+  { "1", API_KEY_1, "Fridge", 32, 25, 1500.0f, true, 0.0f },
+  { "2", API_KEY_2, "Boiler", 33, 26, 2500.0f, true, 0.0f },
+  { "3", API_KEY_3, "Iron",   34, 27, 2000.0f, true, 0.0f }
 };
 const size_t kDeviceCount = sizeof(devices) / sizeof(devices[0]);
 
@@ -98,7 +99,7 @@ bool sendTelemetry(const DeviceMap& dev, float watts) {
   String url = String(SERVER_URL) + "/api/telemetry/";
   http.begin(url);
   http.addHeader("Content-Type", "application/json");
-  http.addHeader("X-API-Key", API_KEY);
+  http.addHeader("X-API-Key", dev.api_key);
 
   StaticJsonDocument<128> body;
   body["device_id"]   = dev.device_id;
@@ -123,43 +124,35 @@ bool sendTelemetry(const DeviceMap& dev, float watts) {
   return code > 0;
 }
 
-bool pollStates() {
+bool pollState(DeviceMap& dev) {
   if (WiFi.status() != WL_CONNECTED) return false;
 
   HTTPClient http;
-  String url = String(SERVER_URL) + "/api/device-state/";
+  String url = String(SERVER_URL) + "/api/device-state/?device_id=" + dev.device_id;
   http.begin(url);
-  http.addHeader("X-API-Key", API_KEY);
+  http.addHeader("X-API-Key", dev.api_key);
 
   int code = http.GET();
   if (code != 200) {
-    Serial.printf("[downlnk] FAILED HTTP %d\n", code);
+    Serial.printf("[downlnk] %s FAILED HTTP %d\n", dev.device_id, code);
     http.end();
     return false;
   }
   String resp = http.getString();
   http.end();
 
-  StaticJsonDocument<1024> doc;
+  StaticJsonDocument<256> doc;
   DeserializationError err = deserializeJson(doc, resp);
   if (err) {
-    Serial.printf("[downlnk] parse error: %s\n", err.c_str());
+    Serial.printf("[downlnk] %s parse error: %s\n", dev.device_id, err.c_str());
     return false;
   }
 
-  for (JsonObject item : doc.as<JsonArray>()) {
-    const char* id = item["device_id"];
-    bool is_on     = item["is_on"];
-    for (size_t i = 0; i < kDeviceCount; ++i) {
-      if (strcmp(devices[i].device_id, id) == 0) {
-        if (devices[i].is_on != is_on) {
-          Serial.printf("[downlnk] %s -> %s\n", id, is_on ? "ON" : "OFF");
-        }
-        devices[i].is_on = is_on;
-      }
-    }
+  bool is_on = doc["is_on"];
+  if (dev.is_on != is_on) {
+    Serial.printf("[downlnk] %s -> %s\n", dev.device_id, is_on ? "ON" : "OFF");
   }
-  applyRelayPins();
+  dev.is_on = is_on;
   return true;
 }
 
@@ -222,7 +215,11 @@ void loop() {
 
   if (now - lastDownlinkMs >= DOWNLINK_INTERVAL_MS) {
     lastDownlinkMs = now;
-    pollStates();
+    for (size_t i = 0; i < kDeviceCount; ++i) {
+      pollState(devices[i]);
+      delay(50);
+    }
+    applyRelayPins();
     drawOled();
   }
 }

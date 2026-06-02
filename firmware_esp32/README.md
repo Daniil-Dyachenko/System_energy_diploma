@@ -20,8 +20,9 @@
    Copy-Item src/secrets.h.example src/secrets.h
    ```
 
-   У `src/secrets.h` пропиши `API_KEY`, що дорівнює `DEVICE_API_KEY`
-   із `../.env`. Решту полів (`SERVER_URL`, `WIFI_*`) можна залишити дефолтні.
+   У `src/secrets.h` пропишите `API_KEY_1..3` - потрібен окремий ключ на кожен прилад,
+   рівний полю `api_key` відповідного `Device` в адмінці. 
+   Решту полів (`SERVER_URL`, `WIFI_*`) можна залишити дефолтними.
 
 2. **Підніміть Django** у корені проекту:
 
@@ -58,8 +59,9 @@ firmware_esp32/
 
 - **`secrets.h: No such file or directory`** — забув скопіювати з
   `secrets.h.example`.
-- **HTTP 401 на uplink** — `API_KEY` у `secrets.h` не співпадає з
-  `DEVICE_API_KEY` у `.env`.
+- **HTTP 403 на uplink/downlink** — ключ приладу (`API_KEY_1..3` у `secrets.h`)
+  не співпадає з `api_key` цього приладу в адмінці, або `device_id` не існує
+  в БД, також, якщо є невідомий пристрій - він також дає 403.
 - **HTTP -1 / timeout** — Django не запущений; перевір `docker compose ps`
   і чи слухає `localhost:8000`.
 - **OLED темний** — у `diagram.json` дефолтна I²C-адреса `0x3C`; деякі

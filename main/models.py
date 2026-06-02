@@ -1,7 +1,15 @@
+import secrets
+
 from decimal import Decimal
 
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+
+
+def generate_device_api_key() -> str:
+    """Return a fresh, unguessable per-device API token (64 hex chars / 256 bits)."""
+
+    return secrets.token_hex(32)
 
 
 class Device(models.Model):
@@ -15,6 +23,15 @@ class Device(models.Model):
         max_length=64,
         unique=True,
         help_text='Unique identifier reported by the ESP32 in API requests.',
+    )
+    api_key = models.CharField(
+        max_length=64,
+        unique=True,
+        default=generate_device_api_key,
+        help_text=(
+            'Per-device secret presented in the X-API-Key header. The board '
+            'must send the key that belongs to the device_id it claims.'
+        ),
     )
     priority = models.PositiveSmallIntegerField(
         default=5,

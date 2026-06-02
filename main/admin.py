@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import BalancingEvent, Device, DeviceEvent, SystemSettings, Telemetry
+from .models import BalancingEvent, Device, DeviceEvent, SystemSettings, Telemetry, generate_device_api_key
 
 
 @admin.register(Device)
@@ -19,6 +19,7 @@ class DeviceAdmin(admin.ModelAdmin):
     list_editable = ('priority', 'is_on')
     search_fields = ('name', 'device_id')
     ordering = ('priority', 'name')
+    actions = ('regenerate_api_keys',)
     readonly_fields = (
         'last_power_watts',
         'last_seen_at',
@@ -28,10 +29,35 @@ class DeviceAdmin(admin.ModelAdmin):
     )
     fieldsets = (
         (None, {'fields': ('name', 'device_id', 'description')}),
+        ('Security / provisioning', {
+            'fields': ('api_key',),
+            'description': (
+                'Per-device X-API-Key the ESP32 must present. The add form is '
+                'pre-filled with a fresh value — copy it into that board\'s '
+                'firmware secrets.h. Use the "Regenerate API key" action to '
+                'rotate a compromised key (and re-flash that one board).'
+            ),
+        }),
         ('Control', {'fields': ('priority', 'is_on')}),
         ('Live state', {'fields': ('last_power_watts', 'last_seen_at', 'shed_at')}),
         ('Timestamps', {'fields': ('created_at', 'updated_at')}),
     )
+
+
+    def get_changeform_initial_data(self, request):
+        initial = super().get_changeform_initial_data(request)
+        initial.setdefault('api_key', generate_device_api_key())
+        return initial
+
+    @admin.action(description='Regenerate API key for selected devices')
+    def regenerate_api_keys(self, request, queryset):
+        count = 0
+        for device in queryset:
+            device.api_key = generate_device_api_key()
+            device.save(update_fields=['api_key', 'updated_at'])
+            count += 1
+        self.message_user(request, f'Regenerated API key for {count} device(s).')
+
 
 
 @admin.register(Telemetry)
