@@ -5,6 +5,7 @@ import csv
 import io
 from datetime import timedelta
 
+from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -21,6 +22,15 @@ from .models import BalancingEvent, Device, DeviceEvent, SystemSettings, Telemet
 from .services import rebalance_load
 
 API_KEY = 'test-api-key'
+
+
+def authed_client():
+    """An APIClient authenticated as a throwaway user."""
+
+    user, _ = User.objects.get_or_create(username='tester')
+    client = APIClient()
+    client.force_authenticate(user=user)
+    return client
 
 @override_settings(DEVICE_API_KEY=API_KEY)
 class TelemetryIngestTests(TestCase):
@@ -347,8 +357,7 @@ class ManualToggleTests(TestCase):
             is_on=False, last_power_watts=800,
             shed_at=timezone.now() - timedelta(seconds=2),
         )
-
-        client = APIClient()
+        client = authed_client()
         url = reverse('device-toggle', kwargs={'pk': device.pk})
         resp = client.post(url)
 
@@ -366,7 +375,7 @@ class ManualToggleTests(TestCase):
             shed_at=None,
         )
 
-        client = APIClient()
+        client = authed_client()
         url = reverse('device-toggle', kwargs={'pk': device.pk})
         resp = client.post(url)
 
@@ -386,7 +395,7 @@ class CurrentLoadEndpointTests(TestCase):
             name='Heater', device_id='esp32-heater', priority=8,
             is_on=False, last_power_watts=2000,
         )
-        client = APIClient()
+        client = authed_client()
         resp = client.get(reverse('current-load'))
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         body = resp.json()
@@ -403,7 +412,7 @@ class ChartDataEndpointTests(TestCase):
     """
 
     def setUp(self):
-        self.client = APIClient()
+        self.client = authed_client()
         self.url = reverse('chart-data')
 
     def test_avg_then_sum_per_bucket(self):
@@ -521,7 +530,7 @@ class BalancingEventsEndpointTests(TestCase):
     """GET /api/balancing-events/ payload shape + limit handling."""
 
     def setUp(self):
-        self.client = APIClient()
+        self.client = authed_client()
         self.url = reverse('balancing-events')
         self.device = Device.objects.create(
             name='Iron', device_id='iron', priority=9,
@@ -566,7 +575,7 @@ class CurrentLoadLastOverloadTests(TestCase):
     """Notifications: /api/current-load/ exposes last_overload_at."""
 
     def setUp(self):
-        self.client = APIClient()
+        self.client = authed_client()
         self.device = Device.objects.create(
             name='Iron', device_id='iron', priority=9,
             is_on=False, last_power_watts=800,
@@ -645,7 +654,7 @@ class DeviceEventLoggingTests(TestCase):
             name='Iron', device_id='iron', priority=9,
             is_on=False, last_power_watts=800,
         )
-        client = APIClient()
+        client = authed_client()
         client.post(reverse('device-toggle', kwargs={'pk': device.pk}))
 
         events = DeviceEvent.objects.filter(device=device)
@@ -657,7 +666,7 @@ class DeviceEventLoggingTests(TestCase):
             name='Iron', device_id='iron', priority=9,
             is_on=True, last_power_watts=800,
         )
-        client = APIClient()
+        client = authed_client()
         client.post(reverse('device-toggle', kwargs={'pk': device.pk}))
 
         events = DeviceEvent.objects.filter(device=device)
@@ -669,7 +678,7 @@ class DeviceHistoryEndpointTests(TestCase):
     """/api/devices/<id>/history/ payload shape + metric correctness."""
 
     def setUp(self):
-        self.client = APIClient()
+        self.client = authed_client()
         self.device = Device.objects.create(
             name='Boiler', device_id='boiler', priority=3,
             is_on=True, last_power_watts=1500,
@@ -752,7 +761,7 @@ class DeviceHistoryEndpointTests(TestCase):
 
     def test_on_time_resets_after_off_on_toggle(self):
         """Toggling OFF then ON again puts the counter back near zero."""
-        client = APIClient()
+        client = authed_client()
         url = reverse('device-toggle', kwargs={'pk': self.device.pk})
         client.post(url)
         client.post(url)
@@ -813,7 +822,7 @@ class TariffSettingsTests(TestCase):
         self.assertEqual(settings_row.tariff_uah_per_kwh, Decimal('4.32'))
 
     def test_get_settings_exposes_tariff(self):
-        client = APIClient()
+        client = authed_client()
         resp = client.get(reverse('system-settings'))
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertIn('tariff_uah_per_kwh', resp.json())
@@ -822,7 +831,7 @@ class TariffSettingsTests(TestCase):
     def test_post_settings_updates_tariff(self):
         """POST /api/settings/ with a new tariff persists the value."""
         from decimal import Decimal
-        client = APIClient()
+        client = authed_client()
         resp = client.post(
             reverse('system-settings'),
             {'tariff_uah_per_kwh': '5.50'},
@@ -836,7 +845,7 @@ class TariffSettingsTests(TestCase):
         )
 
     def test_negative_tariff_rejected(self):
-        client = APIClient()
+        client = authed_client()
         resp = client.post(
             reverse('system-settings'),
             {'tariff_uah_per_kwh': '-1.00'},
@@ -849,7 +858,7 @@ class AccountSummaryEndpointTests(TestCase):
     """GET /api/account/summary/ shape + period semantics."""
 
     def setUp(self):
-        self.client = APIClient()
+        self.client = authed_client()
         self.url = reverse('account-summary')
         self.fridge = Device.objects.create(
             name='Fridge', device_id='fridge', priority=1,
@@ -964,7 +973,7 @@ class AccountExportEndpointTests(TestCase):
     """GET /api/account/export/ returns a CSV of consumption."""
 
     def setUp(self):
-        self.client = APIClient()
+        self.client = authed_client()
         self.url = reverse('account-export')
         self.fridge = Device.objects.create(
             name='Fridge', device_id='fridge', priority=1,
@@ -1070,7 +1079,7 @@ class ForecastEndpointTests(TestCase):
     """GET /api/forecast/ shape + parameter handling."""
 
     def setUp(self):
-        self.client = APIClient()
+        self.client = authed_client()
         self.url = reverse('forecast')
         self.device = Device.objects.create(
             name='Boiler', device_id='boiler', priority=3,
@@ -1155,3 +1164,51 @@ class ForecastEndpointTests(TestCase):
         ma = next(m for m in body['methods'] if m['key'] == 'moving_average')
         self.assertTrue(ma['predicted_overload'])
         self.assertGreater(ma['predicted_peak_watts'], 50)
+
+
+@override_settings(DEVICE_API_KEY=API_KEY)
+class EndpointAuthTests(TestCase):
+    """Stage 5: the web/API surface rejects anonymous callers."""
+
+    def setUp(self):
+        self.anon = APIClient()
+        self.device = Device.objects.create(
+            name='Fridge', device_id='fridge', priority=1,
+            is_on=True, last_power_watts=300,
+        )
+
+    def test_web_endpoints_reject_anonymous(self):
+        urls = [
+            reverse('current-load'),
+            reverse('chart-data'),
+            reverse('system-settings'),
+            reverse('balancing-events'),
+            reverse('account-summary'),
+            reverse('account-export'),
+            reverse('forecast'),
+            reverse('device-list'),
+            reverse('device-history', kwargs={'pk': self.device.pk}),
+        ]
+        for url in urls:
+            resp = self.anon.get(url)
+            self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN, url)
+
+    def test_settings_post_rejects_anonymous(self):
+        resp = self.anon.post(
+            reverse('system-settings'), {'power_limit_watts': 1234}, format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_device_toggle_rejects_anonymous(self):
+        resp = self.anon.post(reverse('device-toggle', kwargs={'pk': self.device.pk}))
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.device.refresh_from_db()
+        self.assertTrue(self.device.is_on, 'anonymous toggle must not flip the relay')
+
+    def test_authenticated_access_succeeds(self):
+        resp = authed_client().get(reverse('current-load'))
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+    def test_esp32_endpoint_still_guarded_by_api_key(self):
+        resp = self.anon.get(reverse('device-state'))
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)

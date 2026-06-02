@@ -12,7 +12,6 @@ from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -93,7 +92,6 @@ class DeviceStateView(APIView):
 class ChartDataView(APIView):
     """GET /api/chart-data/ — total system load aggregated by minute."""
 
-    permission_classes = [AllowAny]
     DEFAULT_WINDOW_MINUTES = 30
     MAX_WINDOW_MINUTES = 24 * 60
 
@@ -129,7 +127,6 @@ class ChartDataView(APIView):
 class SystemSettingsView(APIView):
     """GET/POST /api/settings/ — read or update the singleton system settings."""
 
-    permission_classes = [AllowAny]  # tightened in stage 5
 
     def get(self, request):
         return Response(SystemSettingsSerializer(SystemSettings.load()).data)
@@ -144,8 +141,6 @@ class SystemSettingsView(APIView):
 
 class CurrentLoadView(APIView):
     """GET /api/current-load/ — instant snapshot for the dashboard widget."""
-
-    permission_classes = [AllowAny]
 
     def get(self, request):
         devices = list(Device.objects.all())
@@ -175,8 +170,6 @@ class CurrentLoadView(APIView):
 class AccountSummaryView(APIView):
     """GET /api/account/summary/ — Cabinet page totals."""
 
-    permission_classes = [AllowAny]  # tightened in stage 5
-
     def get(self, request):
         try:
             since, until = resolve_period(
@@ -192,8 +185,6 @@ class AccountSummaryView(APIView):
 
 class AccountExportView(APIView):
     """GET /api/account/export/ — Cabinet consumption as a downloadable CSV."""
-
-    permission_classes = [AllowAny]  # tightened in stage 5
 
     _KWH_DP = 4
     _UAH_DP = 2
@@ -259,8 +250,6 @@ class AccountExportView(APIView):
 class ForecastView(APIView):
     """GET /api/forecast/ - short-term forecast of total system consumption."""
 
-    permission_classes = [AllowAny]  # tightened in stage 5
-
     def get(self, request):
         try:
             params = resolve_forecast_params(request.query_params)
@@ -273,7 +262,6 @@ class ForecastView(APIView):
 class BalancingEventsView(APIView):
     """GET /api/balancing-events/?limit=N — most recent shed/restore actions."""
 
-    permission_classes = [AllowAny]  # tightened in stage 5
     DEFAULT_LIMIT = 20
     MAX_LIMIT = 200
 
@@ -297,9 +285,8 @@ class DeviceViewSet(viewsets.ModelViewSet):
 
     queryset = Device.objects.all()
     serializer_class = DeviceSerializer
-    permission_classes = [AllowAny]  # tightened in stage 5
 
-    @action(detail=True, methods=['get'], url_path='history', permission_classes=[AllowAny])
+    @action(detail=True, methods=['get'], url_path='history')
     def history(self, request, pk=None):
         """One-shot payload for the device-detail page."""
         device: Device = self.get_object()
