@@ -1298,3 +1298,55 @@ class LoginThrottleTests(TestCase):
         self.assertEqual(resp.status_code, 302)
         self.assertIn('_auth_user_id', self.client.session)
 
+
+class CsrfProtectionTests(TestCase):
+    """Stage 5 security: session-authenticated writes require a CSRF token."""
+
+    def setUp(self):
+        self.user = User.objects.create_user('op', password='pw')
+        self.settings_url = reverse('system-settings')
+
+    def _session_client(self):
+        client = APIClient(enforce_csrf_checks=True)
+        client.force_login(self.user)
+        return client
+
+    def test_session_post_without_csrf_token_is_rejected(self):
+        client = self._session_client()
+        resp = client.post(self.settings_url, {'power_limit_watts': 1234}, format='json')
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_session_get_does_not_require_csrf(self):
+        client = self._session_client()
+        resp = client.get(self.settings_url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+    def test_session_post_with_csrf_token_succeeds(self):
+        client = self._session_client()
+        client.get(reverse('dashboard'))
+        token = client.cookies['csrftoken'].value
+        resp = client.post(
+            self.settings_url, {'power_limit_watts': 1234},
+            format='json', HTTP_X_CSRFTOKEN=token,
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.content)
+
+
+class ApiMassAssignmentTests(TestCase):
+    """Stage 5 security: clients cannot write server-computed device fields."""
+
+    def test_readonly_fields_are_ignored_on_patch(self):
+        device = Device.objects.create(
+            name='Fridge', device_id='fridge', priority=5, is_on=True,
+        )
+        client = authed_client()
+        resp = client.patch(
+            reverse('device-detail', kwargs={'pk': device.pk}),
+            {'last_power_watts': 9999, 'shed_at': '2020-01-01T00:00:00Z'},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.content)
+        device.refresh_from_db()
+        self.assertEqual(device.last_power_watts, 0.0)
+        self.assertIsNone(device.shed_at)
+
