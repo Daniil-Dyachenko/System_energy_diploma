@@ -1,0 +1,16 @@
+# Coverage.py configuration.
+[run]
+branch = True
+source = main
+omit =
+    main/migrations/*
+    main/tests.py
+
+[report]
+show_missing = True
+skip_covered = False
+precision = 1
+
+[html]
+directory = htmlcov
+title = Energy System — Test Coverage

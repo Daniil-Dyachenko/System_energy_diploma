@@ -21,3 +21,6 @@ firmware_esp32/src/secrets.h
 .vscode/launch.json
 .vscode/ipch/
 .vscode/.browse.c_cpp.db*
+.coverage
+.coverage.*
+htmlcov/
